@@ -35,6 +35,12 @@ namespace {
 
 //---------------------------------------------------------------------------
 
+// CWE ids used:
+static const struct CWE CWE676(676U);
+static const struct CWE CWE908(908U);
+static const struct CWE CWE825(825U);
+
+
 void CheckUninitVar::check()
 {
     const SymbolDatabase *symbolDatabase = _tokenizer->getSymbolDatabase();
@@ -205,6 +211,14 @@ static void conditionAlwaysTrueOrFalse(const Token *tok, const std::map<unsigned
     }
 
     else if (tok->isComparisonOp()) {
+        if (tok->values.size() == 1U && tok->values.front().isKnown()) {
+            if (tok->values.front().intvalue)
+                *alwaysTrue = true;
+            else
+                *alwaysFalse = true;
+            return;
+        }
+
         const Token *vartok, *numtok;
         if (tok->astOperand2() && tok->astOperand2()->isNumber()) {
             vartok = tok->astOperand1();
@@ -404,7 +418,7 @@ bool CheckUninitVar::checkScopeForVariable(const Token *tok, const Variable& var
                     return true;
                 }
 
-                if (alwaysTrue && noreturnIf)
+                if (alwaysTrue && (initif || noreturnIf))
                     return true;
 
                 std::map<unsigned int, VariableValue> varValueIf;
@@ -473,8 +487,12 @@ bool CheckUninitVar::checkScopeForVariable(const Token *tok, const Variable& var
             const Token *end = tok->next()->link();
 
             // If address of variable is taken in the block then bail out
-            if (Token::findmatch(tok->tokAt(2), "& %varid%", end, var.declarationId()))
+            if (var.isPointer() || var.isArray()) {
+                if (Token::findmatch(tok->tokAt(2), "%varid%", end, var.declarationId()))
+                    return true;
+            } else if (Token::findmatch(tok->tokAt(2), "& %varid%", end, var.declarationId())) {
                 return true;
+            }
 
             // Skip block
             tok = end;
@@ -1126,17 +1144,17 @@ bool CheckUninitVar::isMemberVariableUsage(const Token *tok, bool isPointer, All
 
 void CheckUninitVar::uninitstringError(const Token *tok, const std::string &varname, bool strncpy_)
 {
-    reportError(tok, Severity::error, "uninitstring", "Dangerous usage of '" + varname + "'" + (strncpy_ ? " (strncpy doesn't always null-terminate it)." : " (not null-terminated)."));
+    reportError(tok, Severity::error, "uninitstring", "Dangerous usage of '" + varname + "'" + (strncpy_ ? " (strncpy doesn't always null-terminate it)." : " (not null-terminated)."), CWE676, false);
 }
 
 void CheckUninitVar::uninitdataError(const Token *tok, const std::string &varname)
 {
-    reportError(tok, Severity::error, "uninitdata", "Memory is allocated but not initialized: " + varname);
+    reportError(tok, Severity::error, "uninitdata", "Memory is allocated but not initialized: " + varname, CWE908, false);
 }
 
 void CheckUninitVar::uninitvarError(const Token *tok, const std::string &varname)
 {
-    reportError(tok, Severity::error, "uninitvar", "Uninitialized variable: " + varname);
+    reportError(tok, Severity::error, "uninitvar", "Uninitialized variable: " + varname, CWE908, false);
 }
 
 void CheckUninitVar::uninitStructMemberError(const Token *tok, const std::string &membername)
@@ -1144,7 +1162,7 @@ void CheckUninitVar::uninitStructMemberError(const Token *tok, const std::string
     reportError(tok,
                 Severity::error,
                 "uninitStructMember",
-                "Uninitialized struct member: " + membername);
+                "Uninitialized struct member: " + membername, CWE908, false);
 }
 
 void CheckUninitVar::deadPointer()
@@ -1178,5 +1196,5 @@ void CheckUninitVar::deadPointerError(const Token *pointer, const Token *alias)
     reportError(pointer,
                 Severity::error,
                 "deadpointer",
-                "Dead pointer usage. Pointer '" + strpointer + "' is dead if it has been assigned '" + stralias + "' at line " + MathLib::toString(alias ? alias->linenr() : 0U) + ".");
+                "Dead pointer usage. Pointer '" + strpointer + "' is dead if it has been assigned '" + stralias + "' at line " + MathLib::toString(alias ? alias->linenr() : 0U) + ".", CWE825, false);
 }

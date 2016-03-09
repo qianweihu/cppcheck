@@ -33,31 +33,37 @@
 // Register CheckClass..
 namespace {
     CheckClass instance;
+}
 
-    const char * getFunctionTypeName(
-        Function::Type type)
-    {
-        switch (type) {
-        case Function::eConstructor:
-            return "constructor";
-        case Function::eCopyConstructor:
-            return "copy constructor";
-        case Function::eMoveConstructor:
-            return "move constructor";
-        case Function::eDestructor:
-            return "destructor";
-        case Function::eFunction:
-            return "function";
-        case Function::eOperatorEqual:
-            return "operator=";
-        }
-        return "";
-    }
+static const CWE CWE398(398U);
+static const CWE CWE404(404U);
+static const CWE CWE665(665U);
+static const CWE CWE758(758U);
+static const CWE CWE762(762U);
 
-    inline bool isPureWithoutBody(Function const & func)
-    {
-        return func.isPure() && !func.hasBody();
+static    const char * getFunctionTypeName(
+    Function::Type type)
+{
+    switch (type) {
+    case Function::eConstructor:
+        return "constructor";
+    case Function::eCopyConstructor:
+        return "copy constructor";
+    case Function::eMoveConstructor:
+        return "move constructor";
+    case Function::eDestructor:
+        return "destructor";
+    case Function::eFunction:
+        return "function";
+    case Function::eOperatorEqual:
+        return "operator=";
     }
+    return "";
+}
+
+static bool isPureWithoutBody(Function const & func)
+{
+    return func.isPure() && !func.hasBody();
 }
 
 //---------------------------------------------------------------------------
@@ -358,7 +364,8 @@ void CheckClass::copyConstructorMallocError(const Token *cctor, const Token *all
 
 void CheckClass::copyConstructorShallowCopyError(const Token *tok, const std::string& varname)
 {
-    reportError(tok, Severity::style, "copyCtorPointerCopying", "Value of pointer '" + varname + "', which points to allocated memory, is copied in copy constructor instead of allocating new memory.");
+    reportError(tok, Severity::style, "copyCtorPointerCopying",
+                "Value of pointer '" + varname + "', which points to allocated memory, is copied in copy constructor instead of allocating new memory.", CWE398, false);
 }
 
 void CheckClass::noCopyConstructorError(const Token *tok, const std::string &classname, bool isStruct)
@@ -366,7 +373,7 @@ void CheckClass::noCopyConstructorError(const Token *tok, const std::string &cla
     // The constructor might be intentionally missing. Therefore this is not a "warning"
     reportError(tok, Severity::style, "noCopyConstructor",
                 "'" + std::string(isStruct ? "struct" : "class") + " " + classname +
-                "' does not have a copy constructor which is recommended since the class contains a pointer to allocated memory.");
+                "' does not have a copy constructor which is recommended since the class contains a pointer to allocated memory.", CWE398, false);
 }
 
 bool CheckClass::canNotCopy(const Scope *scope)
@@ -542,8 +549,8 @@ void CheckClass::initializeVarList(const Function &func, std::list<const Functio
             assignVar(ftok->next()->varId(), scope, usage);
         }
 
-        // Before a new statement there is "[{};()=[]"
-        if (! Token::Match(ftok, "[{};()=[]"))
+        // Before a new statement there is "[{};()=[]" or ::
+        if (! Token::Match(ftok, "{|}|;|(|)|=|[|::"))
             continue;
 
         if (Token::simpleMatch(ftok, "( !"))
@@ -776,7 +783,7 @@ void CheckClass::noConstructorError(const Token *tok, const std::string &classna
                 "The " + std::string(isStruct ? "struct" : "class") + " '" + classname +
                 "' does not have a constructor although it has private member variables. "
                 "Member variables of builtin types are left uninitialized when the class is "
-                "instantiated. That may cause bugs or undefined behavior.");
+                "instantiated. That may cause bugs or undefined behavior.", CWE398, false);
 }
 
 void CheckClass::noExplicitConstructorError(const Token *tok, const std::string &classname, bool isStruct)
@@ -788,12 +795,12 @@ void CheckClass::noExplicitConstructorError(const Token *tok, const std::string 
 
 void CheckClass::uninitVarError(const Token *tok, const std::string &classname, const std::string &varname, bool inconclusive)
 {
-    reportError(tok, Severity::warning, "uninitMemberVar", "Member variable '" + classname + "::" + varname + "' is not initialized in the constructor.", 0U, inconclusive);
+    reportError(tok, Severity::warning, "uninitMemberVar", "Member variable '" + classname + "::" + varname + "' is not initialized in the constructor.", CWE398, inconclusive);
 }
 
 void CheckClass::operatorEqVarError(const Token *tok, const std::string &classname, const std::string &varname, bool inconclusive)
 {
-    reportError(tok, Severity::warning, "operatorEqVarError", "Member variable '" + classname + "::" + varname + "' is not assigned a value in '" + classname + "::operator='.", 0U, inconclusive);
+    reportError(tok, Severity::warning, "operatorEqVarError", "Member variable '" + classname + "::" + varname + "' is not assigned a value in '" + classname + "::operator='.", CWE398, inconclusive);
 }
 
 //---------------------------------------------------------------------------
@@ -859,7 +866,7 @@ void CheckClass::suggestInitializationList(const Token* tok, const std::string& 
     reportError(tok, Severity::performance, "useInitializationList", "Variable '" + varname + "' is assigned in constructor body. Consider performing initialization in initialization list.\n"
                 "When an object of a class is created, the constructors of all member variables are called consecutively "
                 "in the order the variables are declared, even if you don't explicitly write them to the initialization list. You "
-                "could avoid assigning '" + varname + "' a value by passing the value to the constructor in the initialization list.");
+                "could avoid assigning '" + varname + "' a value by passing the value to the constructor in the initialization list.", CWE398, false);
 }
 
 //---------------------------------------------------------------------------
@@ -967,7 +974,7 @@ void CheckClass::privateFunctions()
 
 void CheckClass::unusedPrivateFunctionError(const Token *tok, const std::string &classname, const std::string &funcname)
 {
-    reportError(tok, Severity::style, "unusedPrivateFunction", "Unused private function: '" + classname + "::" + funcname + "'");
+    reportError(tok, Severity::style, "unusedPrivateFunction", "Unused private function: '" + classname + "::" + funcname + "'", CWE398, false);
 }
 
 //---------------------------------------------------------------------------
@@ -1133,7 +1140,7 @@ void CheckClass::mallocOnClassWarning(const Token* tok, const std::string &memfu
     reportError(toks, Severity::warning, "mallocOnClassWarning",
                 "Memory for class instance allocated with " + memfunc + "(), but class provides constructors.\n"
                 "Memory for class instance allocated with " + memfunc + "(), but class provides constructors. This is unsafe, "
-                "since no constructor is called and class members remain uninitialized. Consider using 'new' instead.", 0U, false);
+                "since no constructor is called and class members remain uninitialized. Consider using 'new' instead.", CWE762, false);
 }
 
 void CheckClass::mallocOnClassError(const Token* tok, const std::string &memfunc, const Token* classTok, const std::string &classname)
@@ -1144,7 +1151,7 @@ void CheckClass::mallocOnClassError(const Token* tok, const std::string &memfunc
     reportError(toks, Severity::error, "mallocOnClassError",
                 "Memory for class instance allocated with " + memfunc + "(), but class contains a " + classname + ".\n"
                 "Memory for class instance allocated with " + memfunc + "(), but class a " + classname + ". This is unsafe, "
-                "since no constructor is called and class members remain uninitialized. Consider using 'new' instead.", 0U, false);
+                "since no constructor is called and class members remain uninitialized. Consider using 'new' instead.", CWE665, false);
 }
 
 void CheckClass::memsetError(const Token *tok, const std::string &memfunc, const std::string &classname, const std::string &type)
@@ -1153,12 +1160,12 @@ void CheckClass::memsetError(const Token *tok, const std::string &memfunc, const
                 "Using '" + memfunc + "' on " + type + " that contains a " + classname + ".\n"
                 "Using '" + memfunc + "' on " + type + " that contains a " + classname + " is unsafe, because constructor, destructor "
                 "and copy operator calls are omitted. These are necessary for this non-POD type to ensure that a valid object "
-                "is created.");
+                "is created.", CWE762, false);
 }
 
 void CheckClass::memsetErrorReference(const Token *tok, const std::string &memfunc, const std::string &type)
 {
-    reportError(tok, Severity::error, "memsetClassReference", "Using '" + memfunc + "' on " + type + " that contains a reference.");
+    reportError(tok, Severity::error, "memsetClassReference", "Using '" + memfunc + "' on " + type + " that contains a reference.", CWE665, false);
 }
 
 void CheckClass::memsetErrorFloat(const Token *tok, const std::string &type)
@@ -1167,7 +1174,7 @@ void CheckClass::memsetErrorFloat(const Token *tok, const std::string &type)
                 "Using memset() on " + type + " which contains a floating point number."
                 " This is not portable because memset() sets each byte of a block of memory to a specific value and"
                 " the actual representation of a floating-point value is implementation defined."
-                " Note: In case of an IEEE754-1985 compatible implementation setting all bits to zero results in the value 0.0.");
+                " Note: In case of an IEEE754-1985 compatible implementation setting all bits to zero results in the value 0.0.", CWE758, false);
 }
 
 
@@ -1221,7 +1228,7 @@ void CheckClass::operatorEqReturnError(const Token *tok, const std::string &clas
 {
     reportError(tok, Severity::style, "operatorEq", "'" + className + "::operator=' should return '" + className + " &'.\n"
                 "The "+className+"::operator= does not conform to standard C/C++ behaviour. To conform to standard C/C++ behaviour, return a reference to self (such as: '"+className+" &"+className+"::operator=(..) { .. return *this; }'. For safety reasons it might be better to not fix this message. If you think that safety is always more important than conformance then please ignore/suppress this message. For more details about this topic, see the book \"Effective C++\" by Scott Meyers."
-               );
+                , CWE398, false);
 }
 
 //---------------------------------------------------------------------------
@@ -1334,18 +1341,18 @@ void CheckClass::checkReturnPtrThis(const Scope *scope, const Function *func, co
 
 void CheckClass::operatorEqRetRefThisError(const Token *tok)
 {
-    reportError(tok, Severity::style, "operatorEqRetRefThis", "'operator=' should return reference to 'this' instance.");
+    reportError(tok, Severity::style, "operatorEqRetRefThis", "'operator=' should return reference to 'this' instance.", CWE398, false);
 }
 
 void CheckClass::operatorEqShouldBeLeftUnimplementedError(const Token *tok)
 {
-    reportError(tok, Severity::style, "operatorEqShouldBeLeftUnimplemented", "'operator=' should either return reference to 'this' instance or be declared private and left unimplemented.");
+    reportError(tok, Severity::style, "operatorEqShouldBeLeftUnimplemented", "'operator=' should either return reference to 'this' instance or be declared private and left unimplemented.", CWE398, false);
 }
 
 void CheckClass::operatorEqMissingReturnStatementError(const Token *tok, bool error)
 {
     if (error) {
-        reportError(tok, Severity::error, "operatorEqMissingReturnStatement", "No 'return' statement in non-void function causes undefined behavior.");
+        reportError(tok, Severity::error, "operatorEqMissingReturnStatement", "No 'return' statement in non-void function causes undefined behavior.", CWE398, false);
     } else {
         operatorEqRetRefThisError(tok);
     }
@@ -1469,7 +1476,7 @@ void CheckClass::operatorEqToSelfError(const Token *tok)
     reportError(tok, Severity::warning, "operatorEqToSelf",
                 "'operator=' should check for assignment to self to avoid problems with dynamic memory.\n"
                 "'operator=' should check for assignment to self to ensure that each block of dynamically "
-                "allocated memory is owned and managed by only one instance of the class.");
+                "allocated memory is owned and managed by only one instance of the class.", CWE398, false);
 }
 
 //---------------------------------------------------------------------------
@@ -1614,7 +1621,7 @@ void CheckClass::virtualDestructor()
 void CheckClass::virtualDestructorError(const Token *tok, const std::string &Base, const std::string &Derived, bool inconclusive)
 {
     if (inconclusive)
-        reportError(tok, Severity::warning, "virtualDestructor", "Class '" + Base + "' which has virtual members does not have a virtual destructor.", 0U, true);
+        reportError(tok, Severity::warning, "virtualDestructor", "Class '" + Base + "' which has virtual members does not have a virtual destructor.", CWE404, true);
     else
         reportError(tok, Severity::error, "virtualDestructor", "Class '" + Base + "' which is inherited by class '" + Derived + "' does not have a virtual destructor.\n"
                     "Class '" + Base + "' which is inherited by class '" + Derived + "' does not have a virtual destructor. "
@@ -1647,7 +1654,7 @@ void CheckClass::thisSubtraction()
 
 void CheckClass::thisSubtractionError(const Token *tok)
 {
-    reportError(tok, Severity::warning, "thisSubtraction", "Suspicious pointer subtraction. Did you intend to write '->'?");
+    reportError(tok, Severity::warning, "thisSubtraction", "Suspicious pointer subtraction. Did you intend to write '->'?", CWE398, false);
 }
 
 //---------------------------------------------------------------------------
@@ -1988,7 +1995,7 @@ void CheckClass::checkConstError2(const Token *tok1, const Token *tok2, const st
                     "function. Making this function 'const' should not cause compiler errors. "
                     "Even though the function can be made const function technically it may not make "
                     "sense conceptually. Think about your design and the task of the function first - is "
-                    "it a function that must not change object internal state?", 0U, true);
+                    "it a function that must not change object internal state?", CWE(0U), true);
     else
         reportError(toks, Severity::performance, "functionStatic",
                     "Technically the member function '" + classname + "::" + funcname + "' can be static.\n"
@@ -1996,7 +2003,7 @@ void CheckClass::checkConstError2(const Token *tok1, const Token *tok2, const st
                     "function. Making a function static can bring a performance benefit since no 'this' instance is "
                     "passed to the function. This change should not cause compiler errors but it does not "
                     "necessarily make sense conceptually. Think about your design and the task of the function first - "
-                    "is it a function that must not access members of class instances?", 0U, true);
+                    "is it a function that must not access members of class instances?", CWE(0U), true);
 }
 
 //---------------------------------------------------------------------------
@@ -2083,7 +2090,7 @@ void CheckClass::initializerListError(const Token *tok1, const Token *tok2, cons
                 "Members are initialized in the order they are declared, not in the "
                 "order they are in the initializer list.  Keeping the initializer list "
                 "in the same order that the members were declared prevents order dependent "
-                "initialization errors.", 0U, true);
+                "initialization errors.", CWE(0U), true);
 }
 
 
@@ -2113,7 +2120,7 @@ void CheckClass::checkSelfInitialization()
 
 void CheckClass::selfInitializationError(const Token* tok, const std::string& varname)
 {
-    reportError(tok, Severity::error, "selfInitialization", "Member variable '" + varname + "' is initialized by itself.");
+    reportError(tok, Severity::error, "selfInitialization", "Member variable '" + varname + "' is initialized by itself.", CWE665, false);
 }
 
 
@@ -2235,7 +2242,7 @@ void CheckClass::callsPureVirtualFunctionError(
 {
     const char * scopeFunctionTypeName = getFunctionTypeName(scopeFunction.type);
     reportError(tokStack, Severity::warning, "pureVirtualCall", "Call of pure virtual function '" + purefuncname + "' in " + scopeFunctionTypeName + ".\n"
-                "Call of pure virtual function '" + purefuncname + "' in " + scopeFunctionTypeName + ". The call will fail during runtime.", 0U, false);
+                "Call of pure virtual function '" + purefuncname + "' in " + scopeFunctionTypeName + ". The call will fail during runtime.", CWE(0U), false);
 }
 
 
@@ -2289,5 +2296,5 @@ void CheckClass::duplInheritedMembersError(const Token *tok1, const Token* tok2,
     const std::string message = "The " + std::string(derivedIsStruct ? "struct" : "class") + " '" + derivedname +
                                 "' defines member variable with name '" + variablename + "' also defined in its parent " +
                                 std::string(baseIsStruct ? "struct" : "class") + " '" + basename + "'.";
-    reportError(toks, Severity::warning, "duplInheritedMember", message, 0U, false);
+    reportError(toks, Severity::warning, "duplInheritedMember", message, CWE398, false);
 }

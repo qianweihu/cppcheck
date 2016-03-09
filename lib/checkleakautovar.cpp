@@ -35,6 +35,8 @@ namespace {
     CheckLeakAutoVar instance;
 }
 
+static const CWE CWE672(672U);
+static const CWE CWE415(415U);
 //---------------------------------------------------------------------------
 
 void VarInfo::print()
@@ -47,8 +49,28 @@ void VarInfo::print()
         if (use != possibleUsage.end())
             strusage = use->second;
 
-        std::cout << "alloctype='" << it->second.type << "' "
-                  << "possibleUsage='" << strusage << "'" << std::endl;
+        std::string status;
+        switch (it->second.status) {
+        case DEALLOC:
+            status = "dealloc";
+            break;
+        case ALLOC:
+            status = "alloc";
+            break;
+        case NOALLOC:
+            status = "noalloc";
+            break;
+        default:
+            status = "?";
+            break;
+        };
+
+        std::cout << "status=" << status << " "
+                  << "alloctype='" << it->second.type << "' "
+                  << "possibleUsage='" << strusage << "' "
+                  << "conditionalAlloc=" << (conditionalAlloc.find(it->first) != conditionalAlloc.end() ? "yes" : "no") << " "
+                  << "referenced=" << (referenced.find(it->first) != referenced.end() ? "yes" : "no") << " "
+                  << std::endl;
     }
 }
 
@@ -85,7 +107,7 @@ void CheckLeakAutoVar::deallocUseError(const Token *tok, const std::string &varn
 
 void CheckLeakAutoVar::deallocReturnError(const Token *tok, const std::string &varname)
 {
-    reportError(tok, Severity::error, "deallocret", "Returning/dereferencing '" + varname + "' after it is deallocated / released");
+    reportError(tok, Severity::error, "deallocret", "Returning/dereferencing '" + varname + "' after it is deallocated / released", CWE672, false);
 }
 
 void CheckLeakAutoVar::configurationInfo(const Token* tok, const std::string &functionName)
@@ -101,9 +123,9 @@ void CheckLeakAutoVar::configurationInfo(const Token* tok, const std::string &fu
 void CheckLeakAutoVar::doubleFreeError(const Token *tok, const std::string &varname, int type)
 {
     if (_settings->library.isresource(type))
-        reportError(tok, Severity::error, "doubleFree", "Resource handle '" + varname + "' freed twice.");
+        reportError(tok, Severity::error, "doubleFree", "Resource handle '" + varname + "' freed twice.", CWE415, false);
     else
-        reportError(tok, Severity::error, "doubleFree", "Memory pointed to by '" + varname + "' is freed twice.");
+        reportError(tok, Severity::error, "doubleFree", "Memory pointed to by '" + varname + "' is freed twice.", CWE415, false);
 }
 
 

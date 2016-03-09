@@ -33,6 +33,12 @@ namespace {
 //---------------------------------------------------------------------------
 // Checking for shift by too many bits
 //---------------------------------------------------------------------------
+//
+
+// CWE ids used:
+static const struct CWE CWE758(758U);
+static const struct CWE CWE190(190U);
+
 
 void CheckType::checkTooBigBitwiseShift()
 {
@@ -52,10 +58,10 @@ void CheckType::checkTooBigBitwiseShift()
             if (_tokenizer->isCPP() && Token::Match(tok, "[;{}] %name% (") && Token::simpleMatch(tok->linkAt(2), ") ;") && tok->next()->isUpperCaseName() && !tok->next()->function())
                 tok = tok->linkAt(2);
 
-            if (!Token::Match(tok, "<<|>>|<<=|>>="))
+            if (!tok->astOperand1() || !tok->astOperand2())
                 continue;
 
-            if (!tok->astOperand1() || !tok->astOperand2())
+            if (!Token::Match(tok, "<<|>>|<<=|>>="))
                 continue;
 
             // get number of bits of lhs
@@ -95,7 +101,7 @@ void CheckType::tooBigBitwiseShiftError(const Token *tok, int lhsbits, const Val
     errmsg << "Shifting " << lhsbits << "-bit value by " << rhsbits.intvalue << " bits is undefined behaviour";
     if (rhsbits.condition)
         errmsg << ". See condition at line " << rhsbits.condition->linenr() << ".";
-    reportError(callstack, rhsbits.condition ? Severity::warning : Severity::error, "shiftTooManyBits", errmsg.str(), 0U, rhsbits.inconclusive);
+    reportError(callstack, rhsbits.condition ? Severity::warning : Severity::error, "shiftTooManyBits", errmsg.str(), CWE758, rhsbits.inconclusive);
 }
 
 //---------------------------------------------------------------------------
@@ -119,16 +125,16 @@ void CheckType::checkIntegerOverflow()
             if (!tok->isArithmeticalOp())
                 continue;
 
+            // is result signed integer?
+            const ValueType *vt = tok->valueType();
+            if (!vt || vt->type != ValueType::Type::INT || vt->sign != ValueType::Sign::SIGNED)
+                continue;
+
             // is there a overflow result value
             const ValueFlow::Value *value = tok->getValueGE(maxint + 1, _settings);
             if (!value)
                 value = tok->getValueLE(-maxint - 2, _settings);
-            if (!value)
-                continue;
-
-            // is result signed integer?
-            const ValueType *vt = tok->valueType();
-            if (vt && vt->type == ValueType::Type::INT && vt->sign == ValueType::Sign::SIGNED)
+            if (value)
                 integerOverflowError(tok, *value);
         }
     }
@@ -149,7 +155,7 @@ void CheckType::integerOverflowError(const Token *tok, const ValueFlow::Value &v
                 value.condition ? Severity::warning : Severity::error,
                 "integerOverflow",
                 msg,
-                0U,
+                CWE190,
                 value.inconclusive);
 }
 

@@ -25,9 +25,13 @@
 #include "config.h"
 #include "check.h"
 #include "mathlib.h"
+
 #include <list>
 #include <vector>
 #include <string>
+
+// CWE ids used
+static const struct CWE CWE119(119U); // Improper Restriction of Operations within the Bounds of a Memory Buffer
 
 class Variable;
 
@@ -175,11 +179,11 @@ public:
     /**
      * Helper function for checkFunctionCall - check a function parameter
      * \param tok token for the function name
-     * \param par on what parameter is the array used
+     * \param paramIndex on what parameter is the array used
      * \param arrayInfo the array information
      * \param callstack call stack. This is used to prevent recursion and to provide better error messages. Pass a empty list from checkScope etc.
      */
-    void checkFunctionParameter(const Token &tok, const unsigned int par, const ArrayInfo &arrayInfo, const std::list<const Token *>& callstack);
+    void checkFunctionParameter(const Token &tok, const unsigned int paramIndex, const ArrayInfo &arrayInfo, const std::list<const Token *>& callstack);
 
     /**
      * Helper function that checks if the array is used and if so calls the checkFunctionCall
@@ -256,7 +260,7 @@ public:
         c.argumentSizeError(0, "function", "array");
         c.negativeMemoryAllocationSizeError(0);
         c.negativeArraySizeError(0);
-        c.reportError(nullptr, Severity::warning, "arrayIndexOutOfBoundsCond", "Array 'x[10]' accessed at index 20, which is out of bounds. Otherwise condition 'y==20' is redundant.");
+        c.reportError(nullptr, Severity::warning, "arrayIndexOutOfBoundsCond", "Array 'x[10]' accessed at index 20, which is out of bounds. Otherwise condition 'y==20' is redundant.", CWE119, false);
     }
 private:
 

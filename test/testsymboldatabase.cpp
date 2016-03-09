@@ -49,6 +49,7 @@ private:
     const Token* t;
     bool found;
     Settings settings;
+    Settings settings2;
 
     void reset() {
         vartok = nullptr;
@@ -96,6 +97,7 @@ private:
 
     void run() {
         LOAD_LIB_2(settings.library, "std.cfg");
+        settings2.platform(Settings::Unspecified);
 
         TEST_CASE(array);
         TEST_CASE(stlarray);
@@ -171,6 +173,7 @@ private:
 
         TEST_CASE(checkTypeStartEndToken1);
         TEST_CASE(checkTypeStartEndToken2); // handling for unknown macro: 'void f() MACRO {..'
+        TEST_CASE(checkTypeStartEndToken3); // no variable name: void f(const char){}
 
         TEST_CASE(functionArgs1);
         TEST_CASE(functionArgs2);
@@ -180,6 +183,7 @@ private:
         TEST_CASE(namespaces1);
         TEST_CASE(namespaces2);
         TEST_CASE(namespaces3);  // #3854 - unknown macro
+        TEST_CASE(namespaces4);
 
         TEST_CASE(tryCatch1);
 
@@ -236,6 +240,7 @@ private:
         TEST_CASE(symboldatabase51); // #6538
         TEST_CASE(symboldatabase52); // #6581
         TEST_CASE(symboldatabase53); // #7124 (library podtype)
+        TEST_CASE(symboldatabase54); // #7257
 
         TEST_CASE(isImplicitlyVirtual);
         TEST_CASE(isPure);
@@ -1356,6 +1361,19 @@ private:
         ASSERT_EQUALS("DiagnosticsEngine", db->getVariableFromVarId(1)->typeStartToken()->str());
     }
 
+    void checkTypeStartEndToken3() {
+        GET_SYMBOL_DB("void f(const char) {}");
+
+        ASSERT(db && db->functionScopes.size()==1U);
+        if (db && db->functionScopes.size()==1U) {
+            const Function * const f = db->functionScopes.front()->function;
+            ASSERT_EQUALS(1U, f->argCount());
+            const Variable * const arg1 = f->getArgumentVar(0);
+            ASSERT_EQUALS("char", arg1->typeStartToken()->str());
+            ASSERT_EQUALS("char", arg1->typeEndToken()->str());
+        }
+    }
+
     void check(const char code[], bool debug = true) {
         // Clear the error log
         errout.str("");
@@ -1520,6 +1538,16 @@ private:
         ASSERT_EQUALS(2U, db->scopeList.size());
         ASSERT_EQUALS(Scope::eGlobal, db->scopeList.front().type);
         ASSERT_EQUALS(Scope::eNamespace, db->scopeList.back().type);
+    }
+
+    void namespaces4() { // #4698 - type lookup
+        GET_SYMBOL_DB("struct A { int a; };\n"
+                      "namespace fred { struct A {}; }\n"
+                      "fred::A fredA;");
+        const Variable *fredA = db->getVariableFromVarId(2U);
+        ASSERT_EQUALS("fredA", fredA->name());
+        const Type *fredAType = fredA->type();
+        ASSERT_EQUALS(2U, fredAType->classDef->linenr());
     }
 
     void tryCatch1() {
@@ -2204,6 +2232,20 @@ private:
             ASSERT(db->getVariableFromVarId(2) != nullptr);
             ASSERT_EQUALS(false, db->getVariableFromVarId(1)->isClass());
             ASSERT_EQUALS(false, db->getVariableFromVarId(2)->isClass());
+        }
+    }
+
+    void symboldatabase54() { // #7343
+        GET_SYMBOL_DB("class A {\n"
+                      "  void getReg() const override {\n"
+                      "    assert(Kind == k_ShiftExtend);\n"
+                      "  }\n"
+                      "};");
+
+        ASSERT(db != nullptr);
+        if (db) {
+            ASSERT_EQUALS(1U, db->functionScopes.size());
+            ASSERT_EQUALS("getReg", db->functionScopes.front()->className);
         }
     }
 
@@ -3077,13 +3119,14 @@ private:
               "}");
     }
 
-    std::string typeOf(const char code[], const char str[], const char filename[] = "test.cpp") {
-        Settings s;
-        s.platform(Settings::Unspecified);
-        Tokenizer tokenizer(&s, this);
+    std::string typeOf(const char code[], const char pattern[], const char filename[] = "test.cpp") {
+        Tokenizer tokenizer(&settings2, this);
         std::istringstream istr(code);
         tokenizer.tokenize(istr, filename);
-        const Token * const tok = Token::findsimplematch(tokenizer.tokens(),str);
+        const Token* tok;
+        for (tok = tokenizer.list.back(); tok; tok = tok->previous())
+            if (Token::simpleMatch(tok, pattern))
+                break;
         return tok->valueType() ? tok->valueType()->str() : std::string();
     }
 
@@ -3128,14 +3171,14 @@ private:
 
         // char *
         ASSERT_EQUALS("const char *", typeOf("\"hello\" + 1", "+"));
-        ASSERT_EQUALS("char",  typeOf("\"hello\"[1]", "["));
-        ASSERT_EQUALS("char",  typeOf("*\"hello\"", "*"));
+        ASSERT_EQUALS("const char",  typeOf("\"hello\"[1]", "["));
+        ASSERT_EQUALS("const char",  typeOf("*\"hello\"", "*"));
         ASSERT_EQUALS("const short *", typeOf("L\"hello\" + 1", "+"));
 
         // Variable calculations
         ASSERT_EQUALS("void *", typeOf("void *p; a = p + 1;", "+"));
-        ASSERT_EQUALS("int", typeOf("int x; a = x + 1;", "+"));
-        ASSERT_EQUALS("int", typeOf("int x; a = x | 1;", "|"));
+        ASSERT_EQUALS("signed int", typeOf("int x; a = x + 1;", "+"));
+        ASSERT_EQUALS("signed int", typeOf("int x; a = x | 1;", "|"));
         ASSERT_EQUALS("float", typeOf("float x; a = x + 1;", "+"));
         ASSERT_EQUALS("signed int", typeOf("signed x; a = x + 1;", "x +"));
         ASSERT_EQUALS("unsigned int", typeOf("unsigned x; a = x + 1;", "x +"));
@@ -3144,15 +3187,34 @@ private:
         ASSERT_EQUALS("unsigned int", typeOf("unsigned int u1, u2; a = u1 + u2;", "u1 +"));
         ASSERT_EQUALS("unsigned int", typeOf("unsigned int u1, u2; a = u1 * 2;",  "u1 *"));
         ASSERT_EQUALS("unsigned int", typeOf("unsigned int u1, u2; a = u1 * u2;", "u1 *"));
-        ASSERT_EQUALS("int *", typeOf("int x; a = &x;", "&"));
-        ASSERT_EQUALS("int *", typeOf("int x; a = &x;", "&"));
+        ASSERT_EQUALS("signed int *", typeOf("int x; a = &x;", "&"));
+        ASSERT_EQUALS("signed int *", typeOf("int x; a = &x;", "&"));
         ASSERT_EQUALS("long double", typeOf("long double x; dostuff(x,1);", "x ,"));
         ASSERT_EQUALS("long double *", typeOf("long double x; dostuff(&x,1);", "& x ,"));
-        ASSERT_EQUALS("int", typeOf("struct X {int i;}; void f(struct X x) { x.i }", "."));
+        ASSERT_EQUALS("signed int", typeOf("struct X {int i;}; void f(struct X x) { x.i }", "."));
+        ASSERT_EQUALS("signed int *", typeOf("int *p; a = p++;", "++"));
+        ASSERT_EQUALS("signed int", typeOf("int x; a = x++;", "++"));
+
+        // Unary arithmetic/bit operators
+        ASSERT_EQUALS("signed int", typeOf("int x; a = -x;", "-"));
+        ASSERT_EQUALS("signed int", typeOf("int x; a = ~x;", "~"));
+        ASSERT_EQUALS("double", typeOf("double x; a = -x;", "-"));
+
+        // Ternary operator
+        ASSERT_EQUALS("signed int", typeOf("int x; a = (b ? x : x)", "?"));
+        ASSERT_EQUALS("", typeOf("int x; a = (b ? x : y)", "?"));
+        ASSERT_EQUALS("double", typeOf("int x; double y; a = (b ? x : y)", "?"));
+        ASSERT_EQUALS("const char *", typeOf("int x; double y; a = (b ? \"a\" : \"b\")", "?"));
+        ASSERT_EQUALS("", typeOf("int x; double y; a = (b ? \"a\" : std::string(\"b\"))", "?"));
+
+        // Boolean operators
+        ASSERT_EQUALS("bool", typeOf("a > b;", ">"));
+        ASSERT_EQUALS("bool", typeOf("!b;", "!"));
+        ASSERT_EQUALS("bool", typeOf("c = a && b;", "&&"));
 
         // shift => result has same type as lhs
-        ASSERT_EQUALS("int", typeOf("int x; a = x << 1U;", "<<"));
-        ASSERT_EQUALS("int", typeOf("int x; a = x >> 1U;", ">>"));
+        ASSERT_EQUALS("signed int", typeOf("int x; a = x << 1U;", "<<"));
+        ASSERT_EQUALS("signed int", typeOf("int x; a = x >> 1U;", ">>"));
         ASSERT_EQUALS("",           typeOf("a = 12 >> x;", ">>", "test.cpp")); // >> might be overloaded
         ASSERT_EQUALS("signed int", typeOf("a = 12 >> x;", ">>", "test.c"));
         ASSERT_EQUALS("",           typeOf("a = 12 << x;", "<<", "test.cpp")); // << might be overloaded
@@ -3160,32 +3222,41 @@ private:
 
         // array..
         ASSERT_EQUALS("void * *", typeOf("void * x[10]; a = x + 0;", "+"));
-        ASSERT_EQUALS("int *", typeOf("int x[10]; a = x + 1;", "+"));
-        ASSERT_EQUALS("int",  typeOf("int x[10]; a = x[0] + 1;", "+"));
+        ASSERT_EQUALS("signed int *", typeOf("int x[10]; a = x + 1;", "+"));
+        ASSERT_EQUALS("signed int",  typeOf("int x[10]; a = x[0] + 1;", "+"));
 
         // cast..
         ASSERT_EQUALS("void *", typeOf("a = (void *)0;", "("));
         ASSERT_EQUALS("char", typeOf("a = (char)32;", "("));
-        ASSERT_EQUALS("long", typeOf("a = (long)32;", "("));
-        ASSERT_EQUALS("long", typeOf("a = (long int)32;", "("));
-        ASSERT_EQUALS("long long", typeOf("a = (long long)32;", "("));
+        ASSERT_EQUALS("signed long", typeOf("a = (long)32;", "("));
+        ASSERT_EQUALS("signed long", typeOf("a = (long int)32;", "("));
+        ASSERT_EQUALS("signed long long", typeOf("a = (long long)32;", "("));
         ASSERT_EQUALS("long double", typeOf("a = (long double)32;", "("));
         ASSERT_EQUALS("char", typeOf("a = static_cast<char>(32);", "("));
         ASSERT_EQUALS("", typeOf("a = (unsigned x)0;", "("));
 
         // const..
         ASSERT_EQUALS("const char *", typeOf("a = \"123\";", "\"123\""));
-        ASSERT_EQUALS("const int *", typeOf("const int *a; x = a + 1;", "a +"));
-        ASSERT_EQUALS("int * const", typeOf("int * const a; x = a + 1;", "+"));
-        ASSERT_EQUALS("const int *", typeOf("const int a[20]; x = a + 1;", "+"));
+        ASSERT_EQUALS("const signed int *", typeOf("const int *a; x = a + 1;", "a +"));
+        ASSERT_EQUALS("signed int * const", typeOf("int * const a; x = a + 1;", "+"));
+        ASSERT_EQUALS("const signed int *", typeOf("const int a[20]; x = a + 1;", "+"));
+        ASSERT_EQUALS("const signed int *", typeOf("const int x; a = &x;", "&"));
+        ASSERT_EQUALS("signed int", typeOf("int * const a; x = *a;", "*"));
+        ASSERT_EQUALS("const signed int", typeOf("const int * const a; x = *a;", "*"));
 
         // function call..
-        ASSERT_EQUALS("int", typeOf("int a(int); a(5);", "( 5"));
+        ASSERT_EQUALS("signed int", typeOf("int a(int); a(5);", "( 5"));
         ASSERT_EQUALS("unsigned long", typeOf("sizeof(x);", "("));
 
         // struct member..
-        ASSERT_EQUALS("int", typeOf("struct AB { int a; int b; } ab; x = ab.a;", "."));
-        ASSERT_EQUALS("int", typeOf("struct AB { int a; int b; } *ab; x = ab[1].a;", "."));
+        ASSERT_EQUALS("signed int", typeOf("struct AB { int a; int b; } ab; x = ab.a;", "."));
+        ASSERT_EQUALS("signed int", typeOf("struct AB { int a; int b; } *ab; x = ab[1].a;", "."));
+
+        // Static members
+        ASSERT_EQUALS("signed int", typeOf("struct AB { static int a; }; x = AB::a;", "::"));
+
+        // Pointer to unknown type
+        ASSERT_EQUALS("*", typeOf("Bar* b;", "b"));
     }
 };
 

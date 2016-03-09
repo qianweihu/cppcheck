@@ -410,6 +410,7 @@ private:
         ASSERT_EQUALS(";;alloc;", getcode("int **a = new int*[10];", "a"));
         ASSERT_EQUALS(";;alloc;", getcode("int * const a = new int[10];", "a"));
         ASSERT_EQUALS(";;alloc;", getcode("const int * const a = new int[10];", "a"));
+        ASSERT_EQUALS(";;assign;", getcode("A * a = new (X) A;", "a"));
         ASSERT_EQUALS(";;alloc;", getcode("int i = open(a,b);", "i"));
         ASSERT_EQUALS(";;assign;", getcode("int i = open();", "i"));
 
@@ -5109,14 +5110,14 @@ public:
 private:
     Settings settings;
 
-    void check(const char code[], const char fname[] = 0, bool isCPP = true) {
+    void check(const char code[], bool isCPP = true) {
         // Clear the error buffer..
         errout.str("");
 
         // Tokenize..
         Tokenizer tokenizer(&settings, this);
         std::istringstream istr(code);
-        tokenizer.tokenize(istr, fname ? fname : (isCPP ? "test.cpp" : "test.c"));
+        tokenizer.tokenize(istr, isCPP ? "test.cpp" : "test.c");
         tokenizer.simplifyTokenList2();
 
         // Check for memory leaks..
@@ -5244,6 +5245,21 @@ private:
               "    abc->a = malloc(10);\n"
               "}");
         ASSERT_EQUALS("", errout.str());
+
+        // #7302
+        check("void* foo() {\n"
+              "    struct ABC abc;\n"
+              "    abc.a = malloc(10);\n"
+              "    return abc.a;\n"
+              "}", false);
+        ASSERT_EQUALS("", errout.str());
+
+        check("void* foo() {\n"
+              "    struct ABC abc;\n"
+              "    abc.a = malloc(10);\n"
+              "    return abc.b;\n"
+              "}", false);
+        ASSERT_EQUALS("[test.c:4]: (error) Memory leak: abc.a\n", errout.str());
     }
 
     void ret2() {
@@ -5296,7 +5312,7 @@ private:
               "    struct s f2;\n"
               "    f2.a = malloc(100);\n"
               "    *f1 = f2;\n"
-              "}", "test.c");
+              "}", false);
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -5340,7 +5356,7 @@ private:
               "  A a = { 0 };\n"
               "  a.foo = (char *) malloc(10);\n"
               "  assign(&a);\n"
-              "}", "test.c");
+              "}", false);
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -5350,7 +5366,7 @@ private:
               "  struct ABC *abc = malloc(100);\n"
               "  abc.a = (char *) malloc(10);\n"
               "  list_add_tail(&abc->list, head);\n"
-              "}", "test.c");
+              "}", false);
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -5361,7 +5377,7 @@ private:
               "  struct ABC abc;\n"
               "  abc.a = (char *) malloc(10);\n"
               "  a(abc.a);\n"
-              "}", "test.c");
+              "}", false);
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -5428,11 +5444,11 @@ private:
                              "    a.m = malloc(12);\n"
                              "}";
 
-        check(code1, "test.cpp");
+        check(code1, true);
         ASSERT_EQUALS("[test.cpp:12]: (error) Memory leak: a.f\n"
                       "[test.cpp:12]: (error) Memory leak: a.c\n"
                       "[test.cpp:12]: (error) Memory leak: a.m\n", errout.str());
-        check(code1, "test.c");
+        check(code1, false);
         ASSERT_EQUALS("[test.c:12]: (error) Memory leak: a.f\n"
                       "[test.c:12]: (error) Memory leak: a.m\n", errout.str());
 
@@ -5453,9 +5469,9 @@ private:
                              "    free(a.m);\n"
                              "}";
 
-        check(code2, "test.cpp");
+        check(code2, true);
         ASSERT_EQUALS("", errout.str());
-        check(code2, "test.c");
+        check(code2, false);
         ASSERT_EQUALS("", errout.str());
 
         // Test unknown struct. In C++, it might have a destructor
@@ -5464,9 +5480,9 @@ private:
                              "    a.f = fopen(\"test\", \"r\");\n"
                              "}";
 
-        check(code3, "test.cpp");
+        check(code3, true);
         ASSERT_EQUALS("", errout.str());
-        check(code3, "test.c");
+        check(code3, false);
         ASSERT_EQUALS("[test.c:4]: (error) Memory leak: a.f\n", errout.str());
 
         // Test struct with destructor
@@ -5479,7 +5495,7 @@ private:
                              "    a.f = fopen(\"test\", \"r\");\n"
                              "}";
 
-        check(code4, "test.cpp");
+        check(code4, true);
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -5502,7 +5518,7 @@ private:
               "  (s).state_check_buff = (void* )malloc(1);\n"
               "  if (s.state_check_buff == 0)\n"
               "    return;\n"
-              "}", /*fname=*/0, /*isCPP=*/false);
+              "}", false);
         ASSERT_EQUALS("[test.c:9]: (error) Memory leak: s.state_check_buff\n", errout.str());
     }
 
@@ -5512,7 +5528,7 @@ private:
               "  foo f;\n"
               "  ((f)->realm) = strdup(realm);\n"
               "  if(f->realm == NULL) {}\n"
-              "}", /*fname=*/0, /*isCPP=*/false);
+              "}", false);
         ASSERT_EQUALS("[test.c:6]: (error) Memory leak: f.realm\n", errout.str());
     }
 
@@ -5523,7 +5539,7 @@ private:
               "void func() {\n"
               "    struct ABC abc;\n"
               "    abc.a = myalloc();\n"
-              "}", 0, false);
+              "}", false);
         ASSERT_EQUALS("[test.c:7]: (error) Memory leak: abc.a\n", errout.str());
     }
 };
@@ -5710,6 +5726,11 @@ private:
               "};\n"
               "void CTest::Initialise() {\n"
               "    malloc();\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void foo() {\n" // #7348 - cast
+              "    p = (::X*)malloc(42);\n"
               "}");
         ASSERT_EQUALS("", errout.str());
 

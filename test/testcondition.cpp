@@ -581,6 +581,13 @@ private:
               "}");
         ASSERT_EQUALS("", errout.str());
 
+        check("void f(unsigned a, unsigned b) {\n"
+              "  unsigned cmd1 = b & 0x0F;\n"
+              "  if (cmd1 | a) {\n"
+              "    if (b == 0x0C) {}\n"
+              "  }\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
     }
 
 
@@ -1589,7 +1596,9 @@ private:
               "  A(x++ == 1);\n"
               "  A(x++ == 2);\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:4]: (style) Condition 'x++==2' is always false\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:3]: (style) Condition 'x++==1' is always false\n"
+                      "[test.cpp:4]: (style) Condition 'x++==2' is always false\n",
+                      errout.str());
 
         // Avoid FP when condition comes from macro
         check("void f() {\n"
@@ -1603,6 +1612,14 @@ private:
               "  int x = 0;\n"
               "  if (a) { return; }\n" // <- this is just here to fool simplifyKnownVariabels
               "  if ($x != $0) {}\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        // Don't warn in assertions. Condition is often 'always true' by intention.
+        // If platform,defines,etc cause an 'always false' assertion then that is not very dangerous neither
+        check("void f() {\n"
+              "  int x = 0;\n"
+              "  assert(x == 0);\n"
               "}");
         ASSERT_EQUALS("", errout.str());
     }

@@ -220,6 +220,16 @@ private:
         TEST_CASE(garbageCode169); // #6731
         TEST_CASE(garbageCode170);
         TEST_CASE(garbageCode171);
+        TEST_CASE(garbageCode172);
+        TEST_CASE(garbageCode173); // #6781
+        TEST_CASE(garbageCode174); // #7356
+        TEST_CASE(garbageCode175);
+        TEST_CASE(garbageCode176); // #7527
+        TEST_CASE(garbageCode177); // #7321
+        TEST_CASE(garbageCode178); // #3441
+        TEST_CASE(garbageCode179); // #3533
+        TEST_CASE(garbageCode180);
+        TEST_CASE(garbageCode181);
         TEST_CASE(garbageValueFlow);
         TEST_CASE(garbageSymbolDatabase);
         TEST_CASE(garbageAST);
@@ -228,10 +238,10 @@ private:
 
     std::string checkCode(const char code[], bool cpp = true) {
         // double the tests - run each example as C as well as C++
-        const char* filename = cpp ? "test.cpp" : "test.c";
-        const char* alternatefilename = cpp ? "test.c" : "test.cpp";
+        const char* const filename = cpp ? "test.cpp" : "test.c";
+        const char* const alternatefilename = cpp ? "test.c" : "test.cpp";
 
-        // run alternate check first. It should only ensure stability
+        // run alternate check first. It should only ensure stability - so we catch exceptions here.
         try {
             checkCodeInternal(code, alternatefilename);
         } catch (InternalError&) {
@@ -874,7 +884,7 @@ private:
     }
 
     void garbageCode104() { // #6847
-        ASSERT_THROW(checkCode("template < Types > struct S {> ( S < ) S >} { ( ) { } } ( ) { return S < void > ( ) } { ( )> >} { ( ) { } } ( ) { ( ) }"), InternalError);
+        checkCode("template < Types > struct S {> ( S < ) S >} { ( ) { } } ( ) { return S < void > ( ) } { ( )> >} { ( ) { } } ( ) { ( ) }");
     }
 
     void garbageCode105() { // #6859
@@ -1448,6 +1458,57 @@ private:
         ASSERT_THROW(checkCode("(){case()?():}:", false), InternalError);
     }
 
+    void garbageCode172() {
+        // #7357
+        ASSERT_THROW(checkCode("p<e T=l[<]<>>,"), InternalError);
+    }
+
+    void garbageCode173() {
+        // #6781  heap corruption ;  TemplateSimplifier::simplifyTemplateInstantiations
+        ASSERT_THROW(checkCode(" template < Types > struct S : >( S < ...Types... > S <) > { ( ) { } } ( ) { return S < void > ( ) }"), InternalError);
+    }
+
+    void garbageCode174() { // #7356
+        checkCode("{r e() { w*constD = (())D = cast< }}");
+    }
+
+    void garbageCode175() { // #7027
+        ASSERT_THROW(checkCode("int f() {\n"
+                               "  int i , j;\n"
+                               "  for ( i = t3 , i < t1 ; i++ )\n"
+                               "    for ( j = 0 ; j < = j++ )\n"
+                               "        return t1 ,\n"
+                               "}"), InternalError);
+    }
+
+    void garbageCode176() { // #7527
+        checkCode("class t { { struct } enum class f : unsigned { q } b ; operator= ( T ) { switch ( b ) { case f::q: } } { assert ( b ) ; } } { ; & ( t ) ( f::t ) ; } ;");
+    }
+
+    void garbageCode177() { // #7321
+        checkCode("{(){(())}}r&const");
+    }
+
+    void garbageCode178() { // #3441
+        checkCode("%: return ; ()");
+    }
+
+    void garbageCode179() { // #3533
+        checkCode("<class T>\n"
+                  "{\n"
+                  "    struct {\n"
+                  "        typename D4:typename Base<T*>\n"
+                  "    };\n"
+                  "};");
+    }
+
+    void garbageCode180() {
+        checkCode("int");
+    }
+
+    void garbageCode181() {
+        checkCode("int test() { int +; }");
+    }
 };
 
 REGISTER_TEST(TestGarbage)

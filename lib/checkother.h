@@ -218,7 +218,8 @@ private:
     void invalidPointerCastError(const Token* tok, const std::string& from, const std::string& to, bool inconclusive);
     void passedByValueError(const Token *tok, const std::string &parname);
     void constStatementError(const Token *tok, const std::string &type);
-    void charArrayIndexError(const Token *tok);
+    void signedCharArrayIndexError(const Token *tok);
+    void unknownSignCharArrayIndexError(const Token *tok);
     void charBitOpError(const Token *tok);
     void variableScopeError(const Token *tok, const std::string &varname);
     void zerodivError(const Token *tok, bool inconclusive);
@@ -234,7 +235,7 @@ private:
     void suspiciousEqualityComparisonError(const Token* tok);
     void selfAssignmentError(const Token *tok, const std::string &varname);
     void misusedScopeObjectError(const Token *tok, const std::string &varname);
-    void memsetZeroBytesError(const Token *tok, const std::string &varname);
+    void memsetZeroBytesError(const Token *tok);
     void memsetFloatError(const Token *tok, const std::string &var_value);
     void memsetValueOutOfRangeError(const Token *tok, const std::string &value);
     void duplicateBranchError(const Token *tok1, const Token *tok2);
@@ -254,7 +255,7 @@ private:
     void commaSeparatedReturnError(const Token *tok);
     void redundantPointerOpError(const Token* tok, const std::string& varname, bool inconclusive);
     void raceAfterInterlockedDecrementError(const Token* tok);
-    void unusedLabelError(const Token* tok);
+    void unusedLabelError(const Token* tok, bool inSwitch);
     void unknownEvaluationOrder(const Token* tok);
 
     void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) const {
@@ -280,7 +281,8 @@ private:
         c.cstyleCastError(0);
         c.passedByValueError(0, "parametername");
         c.constStatementError(0, "type");
-        c.charArrayIndexError(0);
+        c.signedCharArrayIndexError(0);
+        c.unknownSignCharArrayIndexError(0);
         c.charBitOpError(0);
         c.variableScopeError(0, "varname");
         c.redundantAssignmentInSwitchError(0, 0, "var");
@@ -289,7 +291,7 @@ private:
         c.suspiciousCaseInSwitchError(0, "||");
         c.suspiciousEqualityComparisonError(0);
         c.selfAssignmentError(0, "varname");
-        c.memsetZeroBytesError(0, "varname");
+        c.memsetZeroBytesError(0);
         c.memsetFloatError(0, "varname");
         c.memsetValueOutOfRangeError(0, "varname");
         c.clarifyCalculationError(0, "+");
@@ -309,7 +311,8 @@ private:
         c.nanInArithmeticExpressionError(0);
         c.commaSeparatedReturnError(0);
         c.redundantPointerOpError(0, "varname", false);
-        c.unusedLabelError(0);
+        c.unusedLabelError(0, true);
+        c.unusedLabelError(0, false);
         c.unknownEvaluationOrder(0);
     }
 

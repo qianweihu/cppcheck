@@ -27,16 +27,19 @@ namespace {
     CheckStl instance;
 }
 
+// CWE ids used:
+static const struct CWE CWE664(664U);
+static const struct CWE CWE788(788U);
 
 // Error message for bad iterator usage..
 void CheckStl::invalidIteratorError(const Token *tok, const std::string &iteratorName)
 {
-    reportError(tok, Severity::error, "invalidIterator1", "Invalid iterator: " + iteratorName);
+    reportError(tok, Severity::error, "invalidIterator1", "Invalid iterator: " + iteratorName, CWE664, false);
 }
 
 void CheckStl::iteratorsError(const Token *tok, const std::string &container1, const std::string &container2)
 {
-    reportError(tok, Severity::error, "iterators", "Same iterator is used with different containers '" + container1 + "' and '" + container2 + "'.");
+    reportError(tok, Severity::error, "iterators", "Same iterator is used with different containers '" + container1 + "' and '" + container2 + "'.", CWE664, false);
 }
 
 // Error message used when dereferencing an iterator that has been erased..
@@ -49,12 +52,12 @@ void CheckStl::dereferenceErasedError(const Token *erased, const Token* deref, c
         reportError(callstack, Severity::error, "eraseDereference",
                     "Iterator '" + itername + "' used after element has been erased.\n"
                     "The iterator '" + itername + "' is invalid after the element it pointed to has been erased. "
-                    "Dereferencing or comparing it with another iterator is invalid operation.");
+                    "Dereferencing or comparing it with another iterator is invalid operation.", CWE664, false);
     } else {
         reportError(deref, Severity::error, "eraseDereference",
                     "Invalid iterator '" + itername + "' used.\n"
                     "The iterator '" + itername + "' is invalid before being assigned. "
-                    "Dereferencing or comparing it with another iterator is invalid operation.");
+                    "Dereferencing or comparing it with another iterator is invalid operation.", CWE664, false);
     }
 }
 
@@ -235,7 +238,7 @@ void CheckStl::iterators()
 // Error message for bad iterator usage..
 void CheckStl::mismatchingContainersError(const Token *tok)
 {
-    reportError(tok, Severity::error, "mismatchingContainers", "Iterators of different containers are used together.");
+    reportError(tok, Severity::error, "mismatchingContainers", "Iterators of different containers are used together.", CWE664, false);
 }
 
 namespace {
@@ -376,9 +379,9 @@ void CheckStl::stlOutOfBounds()
 void CheckStl::stlOutOfBoundsError(const Token *tok, const std::string &num, const std::string &var, bool at)
 {
     if (at)
-        reportError(tok, Severity::error, "stlOutOfBounds", "When " + num + "==" + var + ".size(), " + var + ".at(" + num + ") is out of bounds.");
+        reportError(tok, Severity::error, "stlOutOfBounds", "When " + num + "==" + var + ".size(), " + var + ".at(" + num + ") is out of bounds.", CWE788, false);
     else
-        reportError(tok, Severity::error, "stlOutOfBounds", "When " + num + "==" + var + ".size(), " + var + "[" + num + "] is out of bounds.");
+        reportError(tok, Severity::error, "stlOutOfBounds", "When " + num + "==" + var + ".size(), " + var + "[" + num + "] is out of bounds.", CWE788, false);
 }
 
 void CheckStl::erase()
@@ -581,14 +584,14 @@ void CheckStl::pushback()
 // Error message for bad iterator usage..
 void CheckStl::invalidIteratorError(const Token *tok, const std::string &func, const std::string &iterator_name)
 {
-    reportError(tok, Severity::error, "invalidIterator2", "After " + func + "(), the iterator '" + iterator_name + "' may be invalid.");
+    reportError(tok, Severity::error, "invalidIterator2", "After " + func + "(), the iterator '" + iterator_name + "' may be invalid.", CWE664, false);
 }
 
 
 // Error message for bad iterator usage..
 void CheckStl::invalidPointerError(const Token *tok, const std::string &func, const std::string &pointer_name)
 {
-    reportError(tok, Severity::error, "invalidPointer", "Invalid pointer '" + pointer_name + "' after " + func + "().");
+    reportError(tok, Severity::error, "invalidPointer", "Invalid pointer '" + pointer_name + "' after " + func + "().", CWE664, false);
 }
 
 
@@ -621,7 +624,7 @@ void CheckStl::stlBoundariesError(const Token *tok)
     reportError(tok, Severity::error, "stlBoundaries",
                 "Dangerous comparison using operator< on iterator.\n"
                 "Iterator compared with operator<. This is dangerous since the order of items in the "
-                "container is not guaranteed. One should use operator!= instead to compare iterators.");
+                "container is not guaranteed. One should use operator!= instead to compare iterators.", CWE664, false);
 }
 
 static bool if_findCompare(const Token * const tokBack)
@@ -696,7 +699,7 @@ void CheckStl::if_find()
 
                 if (printWarning && container->getYield(funcTok->str()) == Library::Container::ITERATOR)
                     if_findError(tok, false);
-                else if (printPerformance && container->stdStringLike)
+                else if (printPerformance && container->stdStringLike && funcTok->str() == "find")
                     if_findError(tok, true);
             } else if (printWarning && Token::Match(tok, "std :: find|find_if (")) {
                 // check that result is checked properly
@@ -1075,7 +1078,7 @@ void CheckStl::string_c_strThrowError(const Token* tok)
 void CheckStl::string_c_strError(const Token* tok)
 {
     reportError(tok, Severity::error, "stlcstr", "Dangerous usage of c_str(). The value returned by c_str() is invalid after this call.\n"
-                "Dangerous usage of c_str(). The c_str() return value is only valid until its string is deleted.");
+                "Dangerous usage of c_str(). The c_str() return value is only valid until its string is deleted.", CWE664, false);
 }
 
 void CheckStl::string_c_strReturn(const Token* tok)
@@ -1206,7 +1209,7 @@ void CheckStl::autoPointerContainerError(const Token *tok)
 {
     reportError(tok, Severity::error, "useAutoPointerContainer",
                 "You can randomly lose access to pointers if you store 'auto_ptr' pointers in an STL container.\n"
-                "An element of container must be able to be copied but 'auto_ptr' does not fulfill this requirement. You should consider to use 'shared_ptr' or 'unique_ptr'. It is suitable for use in containers, because they no longer copy their values, they move them."
+                "An element of container must be able to be copied but 'auto_ptr' does not fulfill this requirement. You should consider to use 'shared_ptr' or 'unique_ptr'. It is suitable for use in containers, because they no longer copy their values, they move them.", CWE664, false
                );
 }
 
@@ -1214,7 +1217,7 @@ void CheckStl::autoPointerArrayError(const Token *tok)
 {
     reportError(tok, Severity::error, "useAutoPointerArray",
                 "Object pointed by an 'auto_ptr' is destroyed using operator 'delete'. You should not use 'auto_ptr' for pointers obtained with operator 'new[]'.\n"
-                "Object pointed by an 'auto_ptr' is destroyed using operator 'delete'. This means that you should only use 'auto_ptr' for pointers obtained with operator 'new'. This excludes arrays, which are allocated by operator 'new[]' and must be deallocated by operator 'delete[]'."
+                "Object pointed by an 'auto_ptr' is destroyed using operator 'delete'. This means that you should only use 'auto_ptr' for pointers obtained with operator 'new'. This excludes arrays, which are allocated by operator 'new[]' and must be deallocated by operator 'delete[]'.", CWE664, false
                );
 }
 
@@ -1249,15 +1252,21 @@ void CheckStl::uselessCalls()
         for (const Token* tok = scope->classStart; tok != scope->classEnd; tok = tok->next()) {
             if (printWarning && Token::Match(tok, "%var% . compare|find|rfind|find_first_not_of|find_first_of|find_last_not_of|find_last_of ( %name% [,)]") &&
                 tok->varId() == tok->tokAt(4)->varId()) {
+                const Variable* var = tok->variable();
+                if (!var || !var->isStlType())
+                    continue;
                 uselessCallsReturnValueError(tok->tokAt(4), tok->str(), tok->strAt(2));
             } else if (printPerformance && Token::Match(tok, "%var% . swap ( %name% )") &&
                        tok->varId() == tok->tokAt(4)->varId()) {
+                const Variable* var = tok->variable();
+                if (!var || !var->isStlType())
+                    continue;
                 uselessCallsSwapError(tok, tok->str());
             } else if (printPerformance && Token::Match(tok, "%var% . substr (") &&
                        tok->variable() && tok->variable()->isStlStringType()) {
-                if (Token::Match(tok->tokAt(4), "0| )"))
+                if (Token::Match(tok->tokAt(4), "0| )")) {
                     uselessCallsSubstrError(tok, false);
-                else if (tok->strAt(4) == "0" && tok->linkAt(3)->strAt(-1) == "npos") {
+                } else if (tok->strAt(4) == "0" && tok->linkAt(3)->strAt(-1) == "npos") {
                     if (!tok->linkAt(3)->previous()->variable()) // Make sure that its no variable
                         uselessCallsSubstrError(tok, false);
                 } else if (Token::simpleMatch(tok->linkAt(3)->tokAt(-2), ", 0 )"))
@@ -1401,7 +1410,7 @@ void CheckStl::readingEmptyStlContainer_parseUsage(const Token* tok, const Libra
         } else if (!noerror)
             readingEmptyStlContainerError(tok);
     } else if (Token::Match(tok, "%name% . %type% (")) {
-        Library::Container::Yield yield = container->getYield(tok->strAt(2));
+        const Library::Container::Yield yield = container->getYield(tok->strAt(2));
         const Token* parent = tok->tokAt(3)->astParent();
         // Member function call
         if (yield != Library::Container::NO_YIELD &&
@@ -1411,7 +1420,7 @@ void CheckStl::readingEmptyStlContainer_parseUsage(const Token* tok, const Libra
             if (!noerror)
                 readingEmptyStlContainerError(tok);
         } else {
-            Library::Container::Action action = container->getAction(tok->strAt(2));
+            const Library::Container::Action action = container->getAction(tok->strAt(2));
             if (action == Library::Container::FIND || action == Library::Container::ERASE || action == Library::Container::POP || action == Library::Container::CLEAR) {
                 if (!noerror)
                     readingEmptyStlContainerError(tok);
@@ -1454,7 +1463,7 @@ void CheckStl::readingEmptyStlContainer()
                     if (!tok2->varId())
                         continue;
 
-                    std::map<unsigned int, const Library::Container*>::const_iterator container = emptyContainer.find(tok2->varId());
+                    const std::map<unsigned int, const Library::Container*>::const_iterator container = emptyContainer.find(tok2->varId());
                     if (container == emptyContainer.end())
                         continue;
 
@@ -1485,7 +1494,7 @@ void CheckStl::readingEmptyStlContainer()
                 }
             }
 
-            std::map<unsigned int, const Library::Container*>::const_iterator container = emptyContainer.find(tok->varId());
+            const std::map<unsigned int, const Library::Container*>::const_iterator container = emptyContainer.find(tok->varId());
             if (container == emptyContainer.end())
                 continue;
 
@@ -1497,5 +1506,5 @@ void CheckStl::readingEmptyStlContainer()
 
 void CheckStl::readingEmptyStlContainerError(const Token *tok)
 {
-    reportError(tok, Severity::style, "reademptycontainer", "Reading from empty STL container '" + (tok ? tok->str() : std::string("var")) + "'", 0U, true);
+    reportError(tok, Severity::style, "reademptycontainer", "Reading from empty STL container '" + (tok ? tok->str() : std::string("var")) + "'", CWE(0U), true);
 }

@@ -953,7 +953,7 @@ private:
      * @param typetok populated with pointer to the type token, if found
      * @return true if tok points to a variable declaration, false otherwise
      */
-    bool isVariableDeclaration(const Token* tok, const Token*& vartok, const Token*& typetok) const;
+    bool isVariableDeclaration(const Token* const tok, const Token*& vartok, const Token*& typetok) const;
 
     void findFunctionInBase(const std::string & name, size_t args, std::vector<const Function *> & matches) const;
 };
@@ -1026,8 +1026,16 @@ public:
      */
     void validate() const;
 
+    void validateExecutableScopes() const;
+    /**
+     * @brief Check variable list, e.g. variables w/o scope
+     */
+    void validateVariables() const;
+
     /** Set valuetype in provided tokenlist */
     static void setValueTypeInTokenList(Token *tokens, bool cpp, char defaultSignedness);
+
+    void debugValueType() const;
 
 private:
     friend class Scope;
@@ -1041,11 +1049,6 @@ private:
     const Type *findTypeInNested(const Token *tok, const Scope *startScope) const;
     const Scope *findNamespace(const Token * tok, const Scope * scope) const;
     Function *findFunctionInScope(const Token *func, const Scope *ns);
-    /**
-     * Send error message to error logger about internal bug.
-     * @param tok the token that this bug concerns.
-     */
-    void cppcheckError(const Token *tok) const;
 
     /** Whether iName is a keyword as defined in http://en.cppreference.com/w/c/keyword and http://en.cppreference.com/w/cpp/keyword*/
     bool isReservedName(const std::string& iName) const;

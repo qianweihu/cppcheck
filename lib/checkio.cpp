@@ -33,6 +33,10 @@ namespace {
     CheckIO instance;
 }
 
+static const CWE CWE664(664U);
+static const CWE CWE685(685U);
+static const CWE CWE687(687U);
+static const CWE CWE910(910U);
 
 //---------------------------------------------------------------------------
 //    std::cout << std::cout;
@@ -144,7 +148,7 @@ void CheckIO::checkFileUsage()
                         i->second.lastOperation = Filepointer::UNKNOWN_OP;
                     }
                 }
-            } else if (tok->str() == "return" || tok->str() == "continue" || tok->str() == "break") { // Reset upon return, continue or break
+            } else if (tok->str() == "return" || tok->str() == "continue" || tok->str() == "break" || _settings->library.isnoreturn(tok)) { // Reset upon return, continue or break
                 for (std::map<unsigned int, Filepointer>::iterator i = filepointers.begin(); i != filepointers.end(); ++i) {
                     i->second.mode_indent = 0;
                     i->second.mode = UNKNOWN_OM;
@@ -335,26 +339,26 @@ void CheckIO::fflushOnInputStreamError(const Token *tok, const std::string &varn
 void CheckIO::ioWithoutPositioningError(const Token *tok)
 {
     reportError(tok, Severity::error,
-                "IOWithoutPositioning", "Read and write operations without a call to a positioning function (fseek, fsetpos or rewind) or fflush in between result in undefined behaviour.");
+                "IOWithoutPositioning", "Read and write operations without a call to a positioning function (fseek, fsetpos or rewind) or fflush in between result in undefined behaviour.", CWE664, false);
 }
 
 void CheckIO::readWriteOnlyFileError(const Token *tok)
 {
 
     reportError(tok, Severity::error,
-                "readWriteOnlyFile", "Read operation on a file that was opened only for writing.");
+                "readWriteOnlyFile", "Read operation on a file that was opened only for writing.", CWE664, false);
 }
 
 void CheckIO::writeReadOnlyFileError(const Token *tok)
 {
     reportError(tok, Severity::error,
-                "writeReadOnlyFile", "Write operation on a file that was opened only for reading.");
+                "writeReadOnlyFile", "Write operation on a file that was opened only for reading.", CWE664, false);
 }
 
 void CheckIO::useClosedFileError(const Token *tok)
 {
     reportError(tok, Severity::error,
-                "useClosedFile", "Used file that is not opened.");
+                "useClosedFile", "Used file that is not opened.", CWE910, false);
 }
 
 void CheckIO::seekOnAppendedFileError(const Token *tok)
@@ -770,7 +774,7 @@ void CheckIO::checkFormatString(const Token * const tok,
                                                 invalidScanfArgTypeError_int(tok, numFormat, specifier, &argInfo, true);
                                             break;
                                         default:
-                                            if (argInfo.typeToken->str() != "int")
+                                            if (argInfo.typeToken->str() != "int" || !argInfo.typeToken->isUnsigned())
                                                 invalidScanfArgTypeError_int(tok, numFormat, specifier, &argInfo, true);
                                             else if (typesMatch(argInfo.typeToken->originalName(), "size_t") ||
                                                      typesMatch(argInfo.typeToken->originalName(), "ptrdiff_t") ||
@@ -1715,7 +1719,7 @@ void CheckIO::wrongPrintfScanfArgumentsError(const Token* tok,
            << (numFunction != 1 ? " are" : " is")
            << " given.";
 
-    reportError(tok, severity, "wrongPrintfScanfArgNum", errmsg.str());
+    reportError(tok, severity, "wrongPrintfScanfArgNum", errmsg.str(), CWE685, false);
 }
 
 void CheckIO::wrongPrintfScanfPosixParameterPositionError(const Token* tok, const std::string& functionName,
@@ -1998,10 +2002,10 @@ void CheckIO::invalidScanfFormatWidthError(const Token* tok, unsigned int numFor
             return;
         errmsg << "Width " << width << " given in format string (no. " << numFormat << ") is smaller than destination buffer"
                << " '" << varname << "[" << arrlen << "]'.";
-        reportError(tok, Severity::warning, "invalidScanfFormatWidth_smaller", errmsg.str(), 0U, true);
+        reportError(tok, Severity::warning, "invalidScanfFormatWidth_smaller", errmsg.str(), CWE(0U), true);
     } else {
         errmsg << "Width " << width << " given in format string (no. " << numFormat << ") is larger than destination buffer '"
                << varname << "[" << arrlen << "]', use %" << (arrlen - 1) << "s to prevent overflowing it.";
-        reportError(tok, Severity::error, "invalidScanfFormatWidth", errmsg.str(), 0U, false);
+        reportError(tok, Severity::error, "invalidScanfFormatWidth", errmsg.str(), CWE687, false);
     }
 }

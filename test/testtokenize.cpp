@@ -117,6 +117,7 @@ private:
         TEST_CASE(ifAddBraces18); // #3424 - if if { } else else
         TEST_CASE(ifAddBraces19); // #3928 - if for if else
         TEST_CASE(ifAddBraces20); // #5012 - syntax error 'else }'
+        TEST_CASE(ifAddBraces21); // #5332 - if (x) label: {} ..
 
         TEST_CASE(whileAddBraces);
         TEST_CASE(doWhileAddBraces);
@@ -288,6 +289,7 @@ private:
         TEST_CASE(vardecl_par);     // #2743 - set links if variable type contains parentheses
         TEST_CASE(vardecl_par2);    // #3912 - set correct links
         TEST_CASE(vardecl_par3);    // #6556 - Fred x1(a), x2(b);
+        TEST_CASE(vardecl_class_ref);
         TEST_CASE(volatile_variables);
 
         // unsigned i; => unsigned int i;
@@ -312,6 +314,7 @@ private:
         TEST_CASE(functionpointer5);
         TEST_CASE(functionpointer6);
         TEST_CASE(functionpointer7);
+        TEST_CASE(functionpointer8); // #7410 - throw
 
         TEST_CASE(removeRedundantAssignment);
 
@@ -1244,6 +1247,11 @@ private:
     void ifAddBraces20() { // #5012 - syntax error 'else }'
         const char code[] = "void f() { if(x) {} else }";
         ASSERT_THROW(tokenizeAndStringify(code, true), InternalError);
+    }
+
+    void ifAddBraces21() { // #5332 - if (x) label: {} ...
+        const char code[] = "void f() { if(x) label: {} a=1; }";
+        ASSERT_EQUALS("void f ( ) { if ( x ) { label : ; { } } a = 1 ; }", tokenizeAndStringify(code, false));
     }
 
     void whileAddBraces() {
@@ -3630,6 +3638,11 @@ private:
         ASSERT_EQUALS("Fred x1 ( a ) ; Fred x2 ( b ) ;", tokenizeAndStringify(code));
     }
 
+    void vardecl_class_ref() {
+        const char code[] = "class A { B &b1,&b2; };";
+        ASSERT_EQUALS("class A { B & b1 ; B & b2 ; } ;", tokenizeAndStringify(code));
+    }
+
     void vardec_static() {
         {
             // don't simplify declarations of static variables
@@ -4509,6 +4522,28 @@ private:
         }
 
         {
+            const char code[] = "template < f = b || c > struct S;";
+            errout.str("");
+            Tokenizer tokenizer(&settings0, this);
+            std::istringstream istr(code);
+            tokenizer.tokenize(istr, "test.cpp");
+            const Token *tok = tokenizer.tokens();
+            ASSERT_EQUALS(true, tok->linkAt(1) == tok->tokAt(7));
+            ASSERT_EQUALS(true, tok->tokAt(1) == tok->linkAt(7));
+        }
+
+        {
+            const char code[] = "struct A : B<c&&d> {};";
+            errout.str("");
+            Tokenizer tokenizer(&settings0, this);
+            std::istringstream istr(code);
+            tokenizer.tokenize(istr, "test.cpp");
+            const Token *tok = tokenizer.tokens();
+            ASSERT_EQUALS(true, tok->linkAt(4) == tok->tokAt(8));
+            ASSERT_EQUALS(true, tok->tokAt(4) == tok->linkAt(8));
+        }
+
+        {
             // #6601
             const char code[] = "template<class R> struct FuncType<R(&)()> : FuncType<R()> { };";
             errout.str("");
@@ -4681,6 +4716,13 @@ private:
         const char code1[] = "void (X::*y)();";
         const char expected1[] = "\n\n##file 0\n"
                                  "1: void * y@1 ;\n";
+        ASSERT_EQUALS(expected1, tokenizeDebugListing(code1, false));
+    }
+
+    void functionpointer8() {
+        const char code1[] = "int (*f)() throw(int);";
+        const char expected1[] = "\n\n##file 0\n"
+                                 "1: int * f@1 ;\n";
         ASSERT_EQUALS(expected1, tokenizeDebugListing(code1, false));
     }
 
@@ -8070,6 +8112,9 @@ private:
         ASSERT_EQUALS("fori1=current0=,iNUM<=i++;;(", testAst("for(i = (1), current = 0; i <= (NUM); ++i)"));
         ASSERT_EQUALS("foreachxy,((", testAst("for(each(x,y)){}"));  // it's not well-defined what this ast should be
         ASSERT_EQUALS("forab:(", testAst("for (int a : b);"));
+        ASSERT_EQUALS("forab:(", testAst("for (int *a : b);"));
+        ASSERT_EQUALS("forcd:(", testAst("for (a<b> c : d);"));
+        ASSERT_EQUALS("forde:(", testAst("for (a::b<c> d : e);"));
         ASSERT_EQUALS("forx*0=yz;;(", testAst("for(*x=0;y;z)"));
 
         // problems with multiple expressions
@@ -8266,6 +8311,7 @@ private:
         ASSERT_EQUALS("c(40<<return", testAst("return (long long)c << 40;"));
         ASSERT_EQUALS("ab-(=", testAst("a = ((int)-b)")); // Multiple subsequent unary operators (cast and -)
         ASSERT_EQUALS("xdouble123(i*(=", testAst("x = (int)(double(123)*i);"));
+        ASSERT_EQUALS("ac(=", testAst("a = (::b)c;"));
 
         // not cast
         ASSERT_EQUALS("AB||", testAst("(A)||(B)"));

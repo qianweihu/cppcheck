@@ -43,6 +43,14 @@ namespace {
 
 //---------------------------------------------------------------------------
 
+// CWE ids used:
+static const CWE CWE131(131U);
+static const CWE CWE398(398U);
+static const CWE CWE786(786U);
+static const CWE CWE788(788U);
+
+//---------------------------------------------------------------------------
+
 static void makeArrayIndexOutOfBoundsError(std::ostream& oss, const CheckBufferOverrun::ArrayInfo &arrayInfo, const std::vector<MathLib::bigint> &index)
 {
     oss << "Array '" << arrayInfo.varname();
@@ -61,7 +69,7 @@ void CheckBufferOverrun::arrayIndexOutOfBoundsError(const Token *tok, const Arra
 {
     std::ostringstream oss;
     makeArrayIndexOutOfBoundsError(oss, arrayInfo, index);
-    reportError(tok, Severity::error, "arrayIndexOutOfBounds", oss.str());
+    reportError(tok, Severity::error, "arrayIndexOutOfBounds", oss.str(), CWE788, false);
 }
 
 void CheckBufferOverrun::arrayIndexOutOfBoundsError(const Token *tok, const ArrayInfo &arrayInfo, const std::vector<ValueFlow::Value> &index)
@@ -92,7 +100,7 @@ void CheckBufferOverrun::arrayIndexOutOfBoundsError(const Token *tok, const Arra
         std::list<const Token *> callstack;
         callstack.push_back(tok);
         callstack.push_back(condition);
-        reportError(callstack, Severity::warning, "arrayIndexOutOfBoundsCond", errmsg.str(), 0U, false);
+        reportError(callstack, Severity::warning, "arrayIndexOutOfBoundsCond", errmsg.str(), CWE119, false);
     } else {
         std::ostringstream errmsg;
         errmsg << "Array '" << arrayInfo.varname();
@@ -107,7 +115,7 @@ void CheckBufferOverrun::arrayIndexOutOfBoundsError(const Token *tok, const Arra
             errmsg << " out of bounds.";
         }
 
-        reportError(tok, Severity::error, "arrayIndexOutOfBounds", errmsg.str());
+        reportError(tok, Severity::error, "arrayIndexOutOfBounds", errmsg.str(), CWE119, false);
     }
 }
 
@@ -115,7 +123,7 @@ void CheckBufferOverrun::arrayIndexOutOfBoundsError(const std::list<const Token 
 {
     std::ostringstream oss;
     makeArrayIndexOutOfBoundsError(oss, arrayInfo, index);
-    reportError(callstack, Severity::error, "arrayIndexOutOfBounds", oss.str(), 0U, false);
+    reportError(callstack, Severity::error, "arrayIndexOutOfBounds", oss.str());
 }
 
 static std::string bufferOverrunMessage(std::string varnames)
@@ -133,13 +141,13 @@ static std::string bufferOverrunMessage(std::string varnames)
 
 void CheckBufferOverrun::bufferOverrunError(const Token *tok, const std::string &varnames)
 {
-    reportError(tok, Severity::error, "bufferAccessOutOfBounds", bufferOverrunMessage(varnames));
+    reportError(tok, Severity::error, "bufferAccessOutOfBounds", bufferOverrunMessage(varnames), CWE788, false);
 }
 
 
 void CheckBufferOverrun::bufferOverrunError(const std::list<const Token *> &callstack, const std::string &varnames)
 {
-    reportError(callstack, Severity::error, "bufferAccessOutOfBounds", bufferOverrunMessage(varnames), 0U, false);
+    reportError(callstack, Severity::error, "bufferAccessOutOfBounds", bufferOverrunMessage(varnames));
 }
 
 void CheckBufferOverrun::possibleBufferOverrunError(const Token *tok, const std::string &src, const std::string &dst, bool cat)
@@ -148,12 +156,12 @@ void CheckBufferOverrun::possibleBufferOverrunError(const Token *tok, const std:
         reportError(tok, Severity::warning, "possibleBufferAccessOutOfBounds",
                     "Possible buffer overflow if strlen(" + src + ") is larger than sizeof(" + dst + ")-strlen(" + dst +").\n"
                     "Possible buffer overflow if strlen(" + src + ") is larger than sizeof(" + dst + ")-strlen(" + dst +"). "
-                    "The source buffer is larger than the destination buffer so there is the potential for overflowing the destination buffer.");
+                    "The source buffer is larger than the destination buffer so there is the potential for overflowing the destination buffer.", CWE398, false);
     else
         reportError(tok, Severity::warning, "possibleBufferAccessOutOfBounds",
                     "Possible buffer overflow if strlen(" + src + ") is larger than or equal to sizeof(" + dst + ").\n"
                     "Possible buffer overflow if strlen(" + src + ") is larger than or equal to sizeof(" + dst + "). "
-                    "The source buffer is larger than the destination buffer so there is the potential for overflowing the destination buffer.");
+                    "The source buffer is larger than the destination buffer so there is the potential for overflowing the destination buffer.", CWE398, false);
 }
 
 void CheckBufferOverrun::strncatUsageError(const Token *tok)
@@ -177,7 +185,7 @@ void CheckBufferOverrun::outOfBoundsError(const Token *tok, const std::string &w
     if (show_size_info)
         oss << ": Supplied size " << supplied_size << " is larger than actual size " << actual_size;
     oss << '.';
-    reportError(tok, Severity::error, "outOfBounds", oss.str());
+    reportError(tok, Severity::error, "outOfBounds", oss.str(), CWE788, false);
 }
 
 void CheckBufferOverrun::pointerOutOfBoundsError(const Token *tok, const Token *index, const MathLib::bigint indexvalue)
@@ -198,7 +206,7 @@ void CheckBufferOverrun::pointerOutOfBoundsError(const Token *tok, const Token *
     }
     std::string verbosemsg(errmsg + ". From chapter 6.5.6 in the C specification:\n"
                            "\"When an expression that has integer type is added to or subtracted from a pointer, ..\" and then \"If both the pointer operand and the result point to elements of the same array object, or one past the last element of the array object, the evaluation shall not produce an overflow; otherwise, the behavior is undefined.\"");
-    reportError(tok, Severity::portability, "pointerOutOfBounds", errmsg + ".\n" + verbosemsg);
+    reportError(tok, Severity::portability, "pointerOutOfBounds", errmsg + ".\n" + verbosemsg, CWE398, false);
     /*
          "Undefined behaviour: The result of this pointer arithmetic does not point into
          or just one element past the end of the " + object + ".
@@ -221,12 +229,12 @@ void CheckBufferOverrun::terminateStrncpyError(const Token *tok, const std::stri
                 "The buffer '" + varname + "' may not be null-terminated after the call to strncpy().\n"
                 "If the source string's size fits or exceeds the given size, strncpy() does not add a "
                 "zero at the end of the buffer. This causes bugs later in the code if the code "
-                "assumes buffer is null-terminated.", 0U, true);
+                "assumes buffer is null-terminated.", CWE(0U), true);
 }
 
 void CheckBufferOverrun::cmdLineArgsError(const Token *tok)
 {
-    reportError(tok, Severity::error, "insecureCmdLineArgs", "Buffer overrun possible for long command line arguments.");
+    reportError(tok, Severity::error, "insecureCmdLineArgs", "Buffer overrun possible for long command line arguments.", CWE119, false);
 }
 
 void CheckBufferOverrun::bufferNotZeroTerminatedError(const Token *tok, const std::string &varname, const std::string &function)
@@ -235,12 +243,12 @@ void CheckBufferOverrun::bufferNotZeroTerminatedError(const Token *tok, const st
                                "The buffer '" + varname + "' is not null-terminated after the call to " + function + "(). "
                                "This will cause bugs later in the code if the code assumes the buffer is null-terminated.";
 
-    reportError(tok, Severity::warning, "bufferNotZeroTerminated", errmsg, 0U, true);
+    reportError(tok, Severity::warning, "bufferNotZeroTerminated", errmsg, CWE(0U), true);
 }
 
 void CheckBufferOverrun::argumentSizeError(const Token *tok, const std::string &functionName, const std::string &varname)
 {
-    reportError(tok, Severity::warning, "argumentSize", "The array '" + varname + "' is too small, the function '" + functionName + "' expects a bigger one.");
+    reportError(tok, Severity::warning, "argumentSize", "The array '" + varname + "' is too small, the function '" + functionName + "' expects a bigger one.", CWE398, false);
 }
 
 void CheckBufferOverrun::negativeMemoryAllocationSizeError(const Token *tok)
@@ -248,7 +256,7 @@ void CheckBufferOverrun::negativeMemoryAllocationSizeError(const Token *tok)
     reportError(tok, Severity::error, "negativeMemoryAllocationSize",
                 "Memory allocation size is negative.\n"
                 "Memory allocation size is negative."
-                "Negative allocation size has no specified behaviour.");
+                "Negative allocation size has no specified behaviour.", CWE131, false);
 }
 
 //---------------------------------------------------------------------------
@@ -371,15 +379,14 @@ static bool checkMinSizes(const std::list<Library::ArgumentChecks::MinSize> &min
     return error;
 }
 
-void CheckBufferOverrun::checkFunctionParameter(const Token &ftok, unsigned int par, const ArrayInfo &arrayInfo, const std::list<const Token *>& callstack)
+void CheckBufferOverrun::checkFunctionParameter(const Token &ftok, unsigned int paramIndex, const ArrayInfo &arrayInfo, const std::list<const Token *>& callstack)
 {
-    const std::list<Library::ArgumentChecks::MinSize> * const minsizes = _settings->library.argminsizes(&ftok,par);
+    const std::list<Library::ArgumentChecks::MinSize> * const minsizes = _settings->library.argminsizes(&ftok, paramIndex);
 
     if (minsizes && (!(Token::simpleMatch(ftok.previous(), ".") || Token::Match(ftok.tokAt(-2), "!!std ::")))) {
-        if (arrayInfo.element_size() == 0)
-            return;
-
         MathLib::bigint arraySize = arrayInfo.element_size();
+        if (arraySize == 0)
+            return;
         for (std::size_t i = 0; i < arrayInfo.num().size(); ++i)
             arraySize *= arrayInfo.num(i);
 
@@ -401,7 +408,7 @@ void CheckBufferOverrun::checkFunctionParameter(const Token &ftok, unsigned int 
 
         if (func && func->hasBody()) {
             // Get corresponding parameter..
-            const Variable* const parameter = func->getArgumentVar(par-1);
+            const Variable* const parameter = func->getArgumentVar(paramIndex-1);
 
             // Ensure that it has a compatible size..
             if (!parameter || _tokenizer->sizeOfType(parameter->typeStartToken()) != arrayInfo.element_size())
@@ -471,7 +478,7 @@ void CheckBufferOverrun::checkFunctionParameter(const Token &ftok, unsigned int 
 
         // If argument is '%type% a[num]' then check bounds against num
         if (func) {
-            const Variable* const argument = func->getArgumentVar(par-1);
+            const Variable* const argument = func->getArgumentVar(paramIndex-1);
             const Token *nameToken;
             if (argument && Token::Match(argument->typeStartToken(), "%type% %var% [ %num% ] [,)[]")
                 && (nameToken = argument->nameToken()) != nullptr) {
@@ -551,7 +558,7 @@ void CheckBufferOverrun::checkScope(const Token *tok, const std::vector<std::str
     for (std::size_t i = 0; i < varname.size(); ++i)
         varnames += (i == 0 ? "" : " . ") + varname[i];
 
-    const unsigned char varcount = static_cast<unsigned char>(varname.empty() ? 0U : (varname.size() - 1) * 2U);
+    const int varcount = varname.empty() ? 0 : static_cast<int>((varname.size() - 1) * 2U);
 
     // ValueFlow array index..
     if ((declarationId > 0 && Token::Match(tok, "%varid% [", declarationId)) ||
@@ -1121,6 +1128,13 @@ void CheckBufferOverrun::checkGlobalAndLocalVariable()
     for (unsigned int i = 1; i <= _tokenizer->varIdCount(); i++) {
         const Variable * const var = symbolDatabase->getVariableFromVarId(i);
         if (var && var->isArray() && var->dimension(0) > 0) {
+            _errorLogger->reportProgress(_tokenizer->list.getSourceFilePath(),
+                                         "Check (BufferOverrun::checkGlobalAndLocalVariable 1)",
+                                         var->nameToken()->progressValue());
+
+            if (_tokenizer->isMaxTime())
+                return;
+
             const Token *tok = var->nameToken();
             do {
                 if (tok->str() == "{") {
@@ -1163,8 +1177,11 @@ void CheckBufferOverrun::checkGlobalAndLocalVariable()
             int nextTok = 0;
 
             _errorLogger->reportProgress(_tokenizer->list.getSourceFilePath(),
-                                         "Check (BufferOverrun::checkGlobalAndLocalVariable)",
+                                         "Check (BufferOverrun::checkGlobalAndLocalVariable 2)",
                                          tok->progressValue());
+
+            if (_tokenizer->isMaxTime())
+                return;
 
             if (_tokenizer->isCPP() && Token::Match(tok, "[*;{}] %var% = new %type% [ %num% ]")) {
                 size = MathLib::toLongNumber(tok->strAt(6));
@@ -1406,6 +1423,8 @@ void CheckBufferOverrun::checkStructVariable()
 void CheckBufferOverrun::bufferOverrun()
 {
     checkGlobalAndLocalVariable();
+    if (_tokenizer->isMaxTime())
+        return;
     checkStructVariable();
     checkBufferAllocatedWithStrlen();
     checkStringArgument();
@@ -1709,7 +1728,7 @@ void CheckBufferOverrun::negativeIndexError(const Token *tok, MathLib::bigint in
 {
     std::ostringstream ostr;
     ostr << "Array index " << index << " is out of bounds.";
-    reportError(tok, Severity::error, "negativeIndex", ostr.str());
+    reportError(tok, Severity::error, "negativeIndex", ostr.str(), CWE786, false);
 }
 
 void CheckBufferOverrun::negativeIndexError(const Token *tok, const ValueFlow::Value &index)
@@ -1718,7 +1737,7 @@ void CheckBufferOverrun::negativeIndexError(const Token *tok, const ValueFlow::V
     ostr << "Array index " << index.intvalue << " is out of bounds.";
     if (index.condition)
         ostr << " Otherwise there is useless condition at line " << index.condition->linenr() << ".";
-    reportError(tok, index.condition ? Severity::warning : Severity::error, "negativeIndex", ostr.str(), 0U, index.inconclusive);
+    reportError(tok, index.condition ? Severity::warning : Severity::error, "negativeIndex", ostr.str(), CWE786, index.inconclusive);
 }
 
 CheckBufferOverrun::ArrayInfo::ArrayInfo()
@@ -1804,6 +1823,11 @@ void CheckBufferOverrun::arrayIndexThenCheck()
     for (std::size_t i = 0; i < functions; ++i) {
         const Scope * const scope = symbolDatabase->functionScopes[i];
         for (const Token *tok = scope->classStart; tok && tok != scope->classEnd; tok = tok->next()) {
+            if (Token::simpleMatch(tok, "sizeof (")) {
+                tok = tok->linkAt(1);
+                continue;
+            }
+
             if (Token::Match(tok, "%name% [ %var% ]")) {
                 tok = tok->tokAt(2);
 
@@ -1847,7 +1871,7 @@ void CheckBufferOverrun::arrayIndexThenCheckError(const Token *tok, const std::s
                 "Defensive programming: The variable '" + indexName + "' is used as an array index before it "
                 "is checked that is within limits. This can mean that the array might be accessed out of bounds. "
                 "Reorder conditions such as '(a[i] && i < 10)' to '(i < 10 && a[i])'. That way the array will "
-                "not be accessed if the index is out of limits.");
+                "not be accessed if the index is out of limits.", CWE398, false);
 }
 
 Check::FileInfo* CheckBufferOverrun::getFileInfo(const Tokenizer *tokenizer, const Settings *settings) const
@@ -1939,7 +1963,7 @@ void CheckBufferOverrun::analyseWholeProgram(const std::list<Check::FileInfo*> &
                                                    Severity::error,
                                                    ostr.str(),
                                                    "arrayIndexOutOfBounds",
-                                                   false);
+                                                   CWE788, false);
             errorLogger.reportErr(errmsg);
         }
     }

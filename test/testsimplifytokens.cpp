@@ -168,8 +168,6 @@ private:
         TEST_CASE(enum5);
         TEST_CASE(enum6);
         TEST_CASE(enum7);
-        TEST_CASE(enum8);
-        TEST_CASE(enum9); // ticket 1404
         TEST_CASE(enum10); // ticket 1445
         TEST_CASE(enum11);
         TEST_CASE(enum12);
@@ -182,7 +180,6 @@ private:
         TEST_CASE(enum19); // ticket #2536
         TEST_CASE(enum20); // ticket #2600
         TEST_CASE(enum21); // ticket #2720
-        TEST_CASE(enum22); // ticket #2745
         TEST_CASE(enum23); // ticket #2804
         TEST_CASE(enum24); // ticket #2828
         TEST_CASE(enum25); // ticket #2966
@@ -198,13 +195,14 @@ private:
         TEST_CASE(enum35); // ticket #3953 (avoid simplification of type)
         TEST_CASE(enum36); // ticket #4378
         TEST_CASE(enum37); // ticket #4280 (shadow variable)
-        TEST_CASE(enum38); // ticket #4463 (when throwing enum id, don't warn about shadow variable)
-        TEST_CASE(enum39); // ticket #5145 (fp variable hides enum)
         TEST_CASE(enum40);
         TEST_CASE(enum41); // ticket #5212 (valgrind errors during enum simplification)
         TEST_CASE(enum42); // ticket #5182 (template function call in enum value)
         TEST_CASE(enum43); // lhs in assignment
         TEST_CASE(enum44);
+        TEST_CASE(enum45); // ticket #6806 (enum in init list)
+        TEST_CASE(enum46); // ticket #4625 (shadow declaration)
+        TEST_CASE(enum47); // ticket #4973 (wrong simplification in shadow struct variable declaration)
         TEST_CASE(enumscope1); // ticket #3949
         TEST_CASE(enumOriginalName)
         TEST_CASE(duplicateDefinition); // ticket #3565
@@ -232,7 +230,6 @@ private:
         TEST_CASE(simplifyStructDecl2); // ticket #2579
         TEST_CASE(simplifyStructDecl3);
         TEST_CASE(simplifyStructDecl4);
-        TEST_CASE(simplifyStructDecl5); // ticket #3533 (segmentation fault)
         TEST_CASE(simplifyStructDecl6); // ticket #3732
         TEST_CASE(simplifyStructDecl7); // ticket #476 (static anonymous struct array)
 
@@ -2996,62 +2993,6 @@ private:
         return tokenizer.tokens()->stringifyList(0, true);
     }
 
-    void enum8() {
-        // ticket 1388
-        checkSimplifyEnum("enum Direction {N=100,E,S,W,ALL};\n"
-                          "template<class T,int S> class EF_Vector{\n"
-                          "  T v_v[S];\n"
-                          "\n"
-                          "public:\n"
-                          "  EF_Vector();\n"
-                          "  explicit EF_Vector(const T &);\n"
-                          "  explicit EF_Vector(const T arr[S]);\n"
-                          "};\n"
-                          "\n"
-                          "template<class T,int S>\n"
-                          "EF_Vector<T,S>::EF_Vector()\n"
-                          "{\n"
-                          "}\n"
-                          "\n"
-                          "template<class T,int S>\n"
-                          "EF_Vector<T,S>::EF_Vector(const T &t)\n"
-                          "{\n"
-                          "  for(int i=0;i<S;i++)\n"
-                          "    v_v[i]=t;\n"
-                          "}\n"
-                          "\n"
-                          "template<class T,int S>\n"
-                          "EF_Vector<T,S>::EF_Vector(const T arr[S])\n"
-                          "{\n"
-                          "  for(int i=0;i<S;i++)\n"
-                          "    v_v[i]=arr[i];\n"
-                          "}\n"
-                          "\n"
-                          "void initialize()\n"
-                          "{\n"
-                          "   EF_Vector<float,6> d;\n"
-                          "}");
-        ASSERT_EQUALS("[test.cpp:2] -> [test.cpp:1]: (style) Template parameter 'S' hides enumerator with same name\n"
-                      "[test.cpp:11] -> [test.cpp:1]: (style) Template parameter 'S' hides enumerator with same name\n"
-                      "[test.cpp:16] -> [test.cpp:1]: (style) Template parameter 'S' hides enumerator with same name\n"
-                      "[test.cpp:23] -> [test.cpp:1]: (style) Template parameter 'S' hides enumerator with same name\n", errout.str());
-    }
-
-    void enum9() {
-        // ticket 1404
-        checkSimplifyEnum("class XX {\n"
-                          "public:\n"
-                          "static void Set(const int &p){m_p=p;}\n"
-                          "static int m_p;\n"
-                          "};\n"
-                          "int XX::m_p=0;\n"
-                          "int main() {\n"
-                          "  enum { XX };\n"
-                          "  XX::Set(std::numeric_limits<X>::digits());\n"
-                          "}");
-        ASSERT_EQUALS("", errout.str());
-    }
-
     void enum10() {
         // ticket 1445
         const char code[] = "enum {\n"
@@ -3076,8 +3017,7 @@ private:
                                 "}";
         ASSERT_EQUALS(expected, checkSimplifyEnum(code));
 
-        ASSERT_EQUALS("[test.cpp:4] -> [test.cpp:3]: (style) Variable 'u' hides enumerator with same name\n"
-                      "[test.cpp:4] -> [test.cpp:3]: (style) Variable 'v' hides enumerator with same name\n", errout.str());
+        ASSERT_EQUALS("", errout.str());
     }
 
     void enum12() {
@@ -3209,44 +3149,6 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
-    void enum22() { // ticket #2745
-        const char code[] = "enum en { x = 0 };\n"
-                            "void f() {\n"
-                            "    int x = 0;\n"
-                            "    g(x);\n"
-                            "}\n"
-                            "void f2(int &x) {\n"
-                            "    x+=1;\n"
-                            "}\n";
-        checkSimplifyEnum(code);
-        ASSERT_EQUALS("[test.cpp:3] -> [test.cpp:1]: (style) Variable 'x' hides enumerator with same name\n"
-                      "[test.cpp:6] -> [test.cpp:1]: (style) Function argument 'x' hides enumerator with same name\n",
-                      errout.str());
-
-        // avoid false positive: in other scope
-        const char code2[] = "class C1 { enum en { x = 0 }; };\n"
-                             "class C2 { bool x; };\n";
-        checkSimplifyEnum(code2);
-        ASSERT_EQUALS("", errout.str());
-
-        // avoid false positive: inner if-scope
-        const char code3[] = "enum en { x = 0 };\n"
-                             "void f() { if (aa) ; else if (bb==x) df; }\n";
-        checkSimplifyEnum(code3);
-        ASSERT_EQUALS("", errout.str());
-
-        // avoid false positive: Initializer list
-        const char code4[] = "struct S {\n"
-                             "    enum { E = 1 };\n"
-                             "    explicit S(float f)\n"
-                             "        : f_(f * E)\n"
-                             "    {}\n"
-                             "    float f_;\n"
-                             "};";
-        checkSimplifyEnum(code4);
-        ASSERT_EQUALS("", errout.str());
-    }
-
     void enum23() { // ticket #2804
         const char code[] = "enum Enumerator : std::uint8_t { ITEM1, ITEM2, ITEM3 };\n"
                             "Enumerator e = ITEM3;\n";
@@ -3357,22 +3259,6 @@ private:
 
         const char code4[] = "enum { a, b }; void f() { int &a=x; }";
         ASSERT_EQUALS("void f ( ) { int & a = x ; }", checkSimplifyEnum(code4));
-
-        // #4857 - not shadow variable
-        checkSimplifyEnum("enum { a,b }; void f() { if (x) { } else if ( x & a ) {} }");
-        ASSERT_EQUALS("", errout.str());
-    }
-
-    void enum38() { // #4463
-        const char code[] = "enum { a,b }; void f() { throw a; }";
-        checkSimplifyEnum(code);
-        ASSERT_EQUALS("", errout.str());
-    }
-
-    void enum39() { // #5145 - fp variable hides enum
-        const char code[] = "enum { A }; void f() { int a = 1 * A; }";
-        checkSimplifyEnum(code);
-        ASSERT_EQUALS("", errout.str());
     }
 
     void enum40() {
@@ -3414,6 +3300,24 @@ private:
         ASSERT_EQUALS("( datemask_traits < datemask < 'Y' , 'Y' , 'Y' , 'Y' , '/' , 'M' , 'M' , '/' , 'D' , 'D' > > :: value ) ;", checkSimplifyEnum(code2));
     }
 
+    void enum45() { // #6806 - enum in init list
+        const char code[] = "enum a {};\n"
+                            "c::c() : a(0), a(0) {}";
+        ASSERT_EQUALS("c :: c ( ) : a ( 0 ) , a ( 0 ) { }", checkSimplifyEnum(code));
+    }
+
+    void enum46() { // #4625 - wrong simplification in shadow declaration
+        const char code[] = "enum e {foo,bar};\n"
+                            "class c { enum e {foo=0,bar}; };";
+        ASSERT_EQUALS("class c { } ;", checkSimplifyEnum(code));
+    }
+
+    void enum47() { // #4973 - wrong simplification in shadow struct variable declaration
+        const char code[] = "enum e {foo};\n"
+                            "union { struct { } foo; };";
+        ASSERT_EQUALS("union { struct Anonymous0 { } ; struct Anonymous0 foo ; } ;", checkSimplifyEnum(code));
+    }
+
     void enumscope1() { // #3949 - don't simplify enum from one function in another function
         const char code[] = "void foo() { enum { A = 0, B = 1 }; }\n"
                             "void bar() { int a = A; }";
@@ -3434,7 +3338,7 @@ private:
         std::istringstream istr("x ; return a not_eq x;");
         tokenizer.tokenize(istr, "test.c");
         Token *x_token = tokenizer.list.front()->tokAt(5);
-        ASSERT_EQUALS(false, tokenizer.duplicateDefinition(&x_token, tokenizer.tokens()));
+        ASSERT_EQUALS(false, tokenizer.duplicateDefinition(&x_token));
     }
 
     void removestd() {
@@ -3819,17 +3723,6 @@ private:
         ASSERT_EQUALS(expected, tok(code, false));
     }
 
-    void simplifyStructDecl5() {
-        const char code[] = "<class T>\n"
-                            "{\n"
-                            "    struct {\n"
-                            "        typename D4:typename Base<T*>\n"
-                            "    };\n"
-                            "};\n";
-        //don't crash
-        tok(code, false);
-    }
-
     void simplifyStructDecl6() {
         ASSERT_EQUALS("struct A { "
                       "char integers [ X ] ; "
@@ -4058,9 +3951,6 @@ private:
                       " int a [ 10 ] ;"
                       " memset ( a + 4 , 0 , 80 ) ;"
                       " }", tok(code, true));
-
-        // Don't crash
-        tok("int", true);
     }
 
     void simplifyCharAt() { // ticket #4481
