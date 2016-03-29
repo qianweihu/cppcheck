@@ -276,6 +276,8 @@ private:
         TEST_CASE(lambda); // ticket #5867
         TEST_CASE(circularDependencies); // 6298
 
+        TEST_CASE(executableScopeWithUnknownFunction);
+
         TEST_CASE(valuetype);
     }
 
@@ -3119,6 +3121,28 @@ private:
               "}");
     }
 
+    void executableScopeWithUnknownFunction() {
+        GET_SYMBOL_DB("class Fred {\n"
+                      "    void foo(const std::string & a = "");\n"
+                      "};\n"
+                      "Fred::foo(const std::string & b) { }\n");
+
+        ASSERT(db && db->scopeList.size() == 3);
+        if (db && db->scopeList.size() == 3) {
+            std::list<Scope>::const_iterator scope = db->scopeList.begin();
+            ASSERT_EQUALS(Scope::eGlobal, scope->type);
+            ++scope;
+            ASSERT_EQUALS(Scope::eClass, scope->type);
+            const Scope * class_scope = &*scope;
+            ++scope;
+            ASSERT(class_scope->functionList.size() == 1);
+            if (class_scope->functionList.size() == 1) {
+                ASSERT(class_scope->functionList.begin()->hasBody());
+                ASSERT(class_scope->functionList.begin()->functionScope == &*scope);
+            }
+        }
+    }
+
     std::string typeOf(const char code[], const char pattern[], const char filename[] = "test.cpp") {
         Tokenizer tokenizer(&settings2, this);
         std::istringstream istr(code);
@@ -3219,6 +3243,9 @@ private:
         ASSERT_EQUALS("signed int", typeOf("a = 12 >> x;", ">>", "test.c"));
         ASSERT_EQUALS("",           typeOf("a = 12 << x;", "<<", "test.cpp")); // << might be overloaded
         ASSERT_EQUALS("signed int", typeOf("a = 12 << x;", "<<", "test.c"));
+
+        // assignment => result has same type as lhs
+        ASSERT_EQUALS("unsigned short", typeOf("unsigned short x; x = 3;", "="));
 
         // array..
         ASSERT_EQUALS("void * *", typeOf("void * x[10]; a = x + 0;", "+"));

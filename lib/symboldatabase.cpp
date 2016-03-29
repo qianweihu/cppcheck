@@ -1621,6 +1621,13 @@ bool Function::argsMatch(const Scope *scope, const Token *first, const Token *se
             // skip variable names
             first = first->next();
             second = second->next();
+
+            // skip default value assignment
+            if (first->next()->str() == "=") {
+                do {
+                    first = first->next();
+                } while (!Token::Match(first->next(), ",|)"));
+            }
         }
 
         // variable with class path
@@ -3684,6 +3691,12 @@ static void setValueType(Token *tok, const ValueType &valuetype, bool cpp, Value
 
     if (vt1 && Token::Match(parent, "<<|>>")) {
         if (!cpp || (vt2 && vt2->isIntegral()))
+            setValueType(parent, *vt1, cpp, defaultSignedness);
+        return;
+    }
+
+    if (parent->isAssignmentOp()) {
+        if (vt1)
             setValueType(parent, *vt1, cpp, defaultSignedness);
         return;
     }

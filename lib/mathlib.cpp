@@ -38,7 +38,6 @@
 #define ISNAN(x)      (std::isnan(x))
 #endif
 
-
 MathLib::value::value(const std::string &s) :
     intValue(0), doubleValue(0), isUnsigned(false)
 {
@@ -53,6 +52,9 @@ MathLib::value::value(const std::string &s) :
 
     type = MathLib::value::INT;
     intValue = MathLib::toLongNumber(s);
+
+    if (isIntHex(s) && intValue < 0)
+        isUnsigned = true;
 
     // read suffix
     if (s.size() >= 2U) {
@@ -93,9 +95,10 @@ std::string MathLib::value::str() const
         return ret.substr(0, pos+1);
     }
 
-    ostr << intValue;
     if (isUnsigned)
-        ostr << "U";
+        ostr << static_cast<biguint>(intValue) << "U";
+    else
+        ostr << intValue;
     if (type == MathLib::value::LONG)
         ostr << "L";
     else if (type == MathLib::value::LONGLONG)
@@ -257,6 +260,24 @@ MathLib::value MathLib::value::add(int v) const
     else
         temp.doubleValue += v;
     return temp;
+}
+
+MathLib::value MathLib::value::shiftLeft(const MathLib::value &v) const
+{
+    if (!isInt() || !v.isInt())
+        throw InternalError(0, "Shift operand is not integer");
+    MathLib::value ret(*this);
+    ret.intValue <<= v.intValue;
+    return ret;
+}
+
+MathLib::value MathLib::value::shiftRight(const MathLib::value &v) const
+{
+    if (!isInt() || !v.isInt())
+        throw InternalError(0, "Shift operand is not integer");
+    MathLib::value ret(*this);
+    ret.intValue >>= v.intValue;
+    return ret;
 }
 
 
@@ -1245,4 +1266,14 @@ MathLib::value operator|(const MathLib::value &v1, const MathLib::value &v2)
 MathLib::value operator^(const MathLib::value &v1, const MathLib::value &v2)
 {
     return MathLib::value::calc('^',v1,v2);
+}
+
+MathLib::value operator<<(const MathLib::value &v1, const MathLib::value &v2)
+{
+    return v1.shiftLeft(v2);
+}
+
+MathLib::value operator>>(const MathLib::value &v1, const MathLib::value &v2)
+{
+    return v1.shiftRight(v2);
 }
