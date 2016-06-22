@@ -58,6 +58,8 @@ private:
         TEST_CASE(tan);
         TEST_CASE(abs);
         TEST_CASE(toString);
+        TEST_CASE(characterLiteralsNormalization);
+        TEST_CASE(CPP14DigitSeparators);
     }
 
     void isGreater() const {
@@ -289,6 +291,7 @@ private:
         ASSERT_EQUALS((int)('\34'),  MathLib::toLongNumber("'\\34'"));
         ASSERT_EQUALS((int)('\034'), MathLib::toLongNumber("'\\034'"));
         ASSERT_EQUALS((int)('\134'), MathLib::toLongNumber("'\\134'"));
+        ASSERT_EQUALS((int)('\134t'), MathLib::toLongNumber("'\\134t'")); // Ticket #7452
         ASSERT_THROW(MathLib::toLongNumber("'\\9'"), InternalError);
         ASSERT_THROW(MathLib::toLongNumber("'\\934'"), InternalError);
         // that is not gcc/clang encoding
@@ -299,6 +302,7 @@ private:
             ASSERT_EQUALS(0, MathLib::characterLiteralToLongNumber(std::string("")));
             ASSERT_EQUALS(32, MathLib::characterLiteralToLongNumber(std::string(" ")));
             ASSERT_EQUALS(538976288, MathLib::characterLiteralToLongNumber(std::string("          ")));
+            ASSERT_THROW(MathLib::characterLiteralToLongNumber(std::string("\\u")), InternalError);
         }
 
         ASSERT_EQUALS(-8552249625308161526, MathLib::toLongNumber("0x89504e470d0a1a0a"));
@@ -1118,6 +1122,44 @@ private:
         // double (tailing l or L)
         ASSERT_EQUALS("0"     , MathLib::toString(+0.0l));
         ASSERT_EQUALS("-0"    , MathLib::toString(-0.0L));
+    }
+
+    void characterLiteralsNormalization() {
+        // `A` is 0x41 and 0101
+        ASSERT_EQUALS("A" , MathLib::normalizeCharacterLiteral("\\x41"));
+        ASSERT_EQUALS("A" , MathLib::normalizeCharacterLiteral("\\101"));
+        // Hexa and octal numbers should not only be intepreted in byte 1
+        ASSERT_EQUALS("TESTATEST" , MathLib::normalizeCharacterLiteral("TEST\\x41TEST"));
+        ASSERT_EQUALS("TESTATEST" , MathLib::normalizeCharacterLiteral("TEST\\101TEST"));
+        ASSERT_EQUALS("TESTTESTA" , MathLib::normalizeCharacterLiteral("TESTTEST\\x41"));
+        ASSERT_EQUALS("TESTTESTA" , MathLib::normalizeCharacterLiteral("TESTTEST\\101"));
+        // Single escape sequences
+        ASSERT_EQUALS("\?" , MathLib::normalizeCharacterLiteral("\\?"));
+        ASSERT_EQUALS("\'" , MathLib::normalizeCharacterLiteral("\\'"));
+        // Incomplete hexa and octal sequences
+        ASSERT_THROW(MathLib::normalizeCharacterLiteral("\\"), InternalError);
+        ASSERT_THROW(MathLib::normalizeCharacterLiteral("\\x"), InternalError);
+        // No octal digit in an octal sequence
+        ASSERT_THROW(MathLib::normalizeCharacterLiteral("\\9"), InternalError);
+        // Unsupported single escape sequence
+        ASSERT_THROW(MathLib::normalizeCharacterLiteral("\\c"), InternalError);
+    }
+
+    void CPP14DigitSeparators() { // Ticket #7137
+        ASSERT(MathLib::isDigitSeparator("'", 0) == false);
+        ASSERT(MathLib::isDigitSeparator("123'0;", 3));
+        ASSERT(MathLib::isDigitSeparator("foo(1'2);", 5));
+        ASSERT(MathLib::isDigitSeparator("foo(1,1'2);", 7));
+        ASSERT(MathLib::isDigitSeparator("int a=1'234-1'2-'0';", 7));
+        ASSERT(MathLib::isDigitSeparator("int a=1'234-1'2-'0';", 13));
+        ASSERT(MathLib::isDigitSeparator("int a=1'234-1'2-'0';", 16) == false);
+        ASSERT(MathLib::isDigitSeparator("int b=1+9'8;", 9));
+        ASSERT(MathLib::isDigitSeparator("if (1'2) { char c = 'c'; }", 5));
+        ASSERT(MathLib::isDigitSeparator("if (120%1'2) { char c = 'c'; }", 9));
+        ASSERT(MathLib::isDigitSeparator("if (120&1'2) { char c = 'c'; }", 9));
+        ASSERT(MathLib::isDigitSeparator("if (120|1'2) { char c = 'c'; }", 9));
+        ASSERT(MathLib::isDigitSeparator("if (120%1'2) { char c = 'c'; }", 24) == false);
+        ASSERT(MathLib::isDigitSeparator("if (120%1'2) { char c = 'c'; }", 26) == false);
     }
 };
 

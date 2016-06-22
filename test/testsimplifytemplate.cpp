@@ -88,6 +88,7 @@ private:
         TEST_CASE(template53);  // #4335 - bail out for valid code
         TEST_CASE(template54);  // #6587 - memory corruption upon valid code
         TEST_CASE(template55);  // #6604 - simplify "const const" to "const" in template instantiations
+        TEST_CASE(template56);  // #7117 - const ternary operator simplification as template parameter
         TEST_CASE(template_enum);  // #6299 Syntax error in complex enum declaration (including template)
         TEST_CASE(template_unhandled);
         TEST_CASE(template_default_parameter);
@@ -1011,6 +1012,16 @@ private:
                 "A<int> a(0);"));
     }
 
+    void template56() { // #7117
+        tok("template<bool B> struct Foo { "
+            "  std::array<int, B ? 1 : 2> mfoo; "
+            "}; "
+            "void foo() { "
+            "  Foo<true> myFoo; "
+            "}", /*simplify=*/true, /*debugwarnings=*/true);
+        ASSERT_EQUALS("", errout.str());
+    }
+
     void template_enum() {
         const char code1[] = "template <class T>\n"
                              "struct Unconst {\n"
@@ -1041,7 +1052,7 @@ private:
                              "{\n"
                              "    enum {value = !type_equal<T, typename Unconst<T>::type>::value  };\n"
                              "};";
-        const char expected1[]="template < class T > struct Unconst { } ; template < class T > struct type_equal<T,T> { } ; template < class T > struct template_is_const { } ; struct type_equal<T,T> { } ; struct Unconst<constT*const> { } ; struct Unconst<constT&*const> { } ; struct Unconst<T*const*const> { } ; struct Unconst<T*const> { } ; struct Unconst<T*const> { } ; struct Unconst<T*const> { } ; struct Unconst<constT&><};template<T> { } ; struct Unconst<constT><};template<T> { } ;";
+        const char expected1[]="template < class T > struct Unconst { } ; template < class T > struct type_equal<T,T> { enum Anonymous1 { value = 1 } ; } ; template < class T > struct template_is_const { enum Anonymous2 { value = ! type_equal < T , Unconst < T > :: type > :: value } ; } ; struct type_equal<T,T> { enum Anonymous0 { value = 0 } ; } ; struct Unconst<constT*const> { } ; struct Unconst<constT&*const> { } ; struct Unconst<T*const*const> { } ; struct Unconst<T*const> { } ; struct Unconst<T*const> { } ; struct Unconst<T*const> { } ; struct Unconst<constT&><};template<T> { } ; struct Unconst<constT><};template<T> { } ;";
         ASSERT_EQUALS(expected1, tok(code1));
     }
 

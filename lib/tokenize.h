@@ -72,7 +72,7 @@ public:
     bool IsScopeNoReturn(const Token *endScopeToken, bool *unknown = nullptr) const;
 
     bool createTokens(std::istream &code,
-                      const char FileName[]);
+                      const std::string& FileName);
 
     bool simplifyTokens1(const std::string &configuration,
                          bool noSymbolDB_AST = false);
@@ -111,6 +111,8 @@ public:
 
     /** Set variable id */
     void setVarId();
+    void setVarIdPass1();
+    void setVarIdPass2();
 
     /**
     * Basic simplification of tokenlist
@@ -280,12 +282,6 @@ public:
      * Example: ";a+=b;" => ";a=a+b;"
      */
     void simplifyCompoundAssignment();
-
-
-    /**
-     * Simplify "* const" to "*"
-     */
-    void simplifyPointerConst();
 
     /**
      * Simplify the location of "static" and "const" qualifiers in
@@ -549,11 +545,6 @@ private:
      * Simplify while(func(f))
      */
     void simplifyFuncInWhile();
-
-    /**
-     * Replace enum with constant value
-     */
-    void simplifyEnum();
 
     /**
      * Remove "std::" before some function names

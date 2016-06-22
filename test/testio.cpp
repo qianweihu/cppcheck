@@ -44,6 +44,7 @@ private:
 
         TEST_CASE(testScanf1); // Scanf without field limiters
         TEST_CASE(testScanf2);
+        TEST_CASE(testScanf3); // #3494
         TEST_CASE(testScanf4); // #ticket 2553
 
         TEST_CASE(testScanfArgument);
@@ -705,11 +706,11 @@ private:
               "    scanf(\"%dx%s\", &b, bar);\n"
               "    fclose(file);\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:4]: (warning) scanf without field width limits can crash with huge input data.\n"
-                      "[test.cpp:5]: (warning) scanf without field width limits can crash with huge input data.\n"
-                      "[test.cpp:6]: (warning) scanf without field width limits can crash with huge input data.\n"
-                      "[test.cpp:7]: (warning) scanf without field width limits can crash with huge input data.\n"
-                      "[test.cpp:8]: (warning) scanf without field width limits can crash with huge input data.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:4]: (warning) fscanf() without field width limits can crash with huge input data.\n"
+                      "[test.cpp:5]: (warning) scanf() without field width limits can crash with huge input data.\n"
+                      "[test.cpp:6]: (warning) scanf() without field width limits can crash with huge input data.\n"
+                      "[test.cpp:7]: (warning) sscanf() without field width limits can crash with huge input data.\n"
+                      "[test.cpp:8]: (warning) scanf() without field width limits can crash with huge input data.\n", errout.str());
     }
 
     void testScanf2() {
@@ -722,6 +723,16 @@ private:
               "    scanf(\"%*[^~]\");\n" // Ignore input
               "}");
         ASSERT_EQUALS("[test.cpp:4]: (warning) scanf format string requires 0 parameters but 1 is given.\n", errout.str());
+    }
+
+    void testScanf3() { // ticket #3494
+        check("void f() {\n"
+              "  char str[8];\n"
+              "  scanf(\"%7c\", str);\n"
+              "  scanf(\"%8c\", str);\n"
+              "  scanf(\"%9c\", str);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:5]: (error) Width 9 given in format string (no. 1) is larger than destination buffer 'str[8]', use %8c to prevent overflowing it.\n", errout.str());
     }
 
     void testScanf4() { // ticket #2553
@@ -845,7 +856,7 @@ private:
               "}", true);
         ASSERT_EQUALS("[test.cpp:5]: (warning, inconclusive) Width 3 given in format string (no. 1) is smaller than destination buffer 'output[5]'.\n"
                       "[test.cpp:7]: (error) Width 5 given in format string (no. 1) is larger than destination buffer 'output[5]', use %4s to prevent overflowing it.\n"
-                      "[test.cpp:4]: (warning) scanf without field width limits can crash with huge input data.\n", errout.str());
+                      "[test.cpp:4]: (warning) sscanf() without field width limits can crash with huge input data.\n", errout.str());
 
         check("void foo() {\n"
               "    const size_t BUFLENGTH(2048);\n"
@@ -1329,7 +1340,7 @@ private:
                   "    scanf(\"%s\n\", c);\n"
                   "}\n");
             ASSERT_EQUALS("[test.cpp:3]: (warning) %s in format string (no. 1) requires a 'char *' but the argument type is 'const char *'.\n"
-                          "[test.cpp:3]: (warning) scanf without field width limits can crash with huge input data.\n", errout.str());
+                          "[test.cpp:3]: (warning) scanf() without field width limits can crash with huge input data.\n", errout.str());
         }
 
     }
@@ -2176,6 +2187,12 @@ private:
         ASSERT_EQUALS("[test.cpp:9]: (warning) %u in format string (no. 1) requires 'unsigned int' but the argument type is 'int'.\n"
                       "[test.cpp:9]: (warning) %u in format string (no. 2) requires 'unsigned int' but the argument type is 'float'.\n", errout.str());
 
+        // Ticket #7445
+        check("struct S { unsigned short x; } s = {0};\n"
+              "void foo() {\n"
+              "    printf(\"%d\", s.x);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void testPosixPrintfScanfParameterPosition() { // #4900  - No support for parameters in format strings
@@ -2563,6 +2580,7 @@ private:
         check("void foo() {\n"
               "    char lineBuffer [600];\n"
               "    const char * const format = \"%15s%17s%17s%17s%17s\n\";\n"
+              "    sprintf_s(lineBuffer, 600, format, \"type\", \"sum\", \"avg\", \"min\", \"max\");\n"
               "    sprintf_s(lineBuffer, format, \"type\", \"sum\", \"avg\", \"min\", \"max\");\n"
               "}\n", false, false, Settings::Win32A);
         ASSERT_EQUALS("", errout.str());
@@ -2581,6 +2599,9 @@ private:
               "    printf(format1, \"type\", \"sum\", \"avg\", \"min\", i, 0);\n"
               "    printf(format2, \"type\", \"sum\", \"avg\", \"min\", i, 0);\n"
               "    printf(format3, \"type\", \"sum\", \"avg\", \"min\", i, 0);\n"
+              "    sprintf_s(lineBuffer, 100, format1, \"type\", \"sum\", \"avg\", \"min\", i, 0);\n"
+              "    sprintf_s(lineBuffer, 100, format2, \"type\", \"sum\", \"avg\", \"min\", i, 0);\n"
+              "    sprintf_s(lineBuffer, 100, format3, \"type\", \"sum\", \"avg\", \"min\", i, 0);\n"
               "}\n", false, false, Settings::Win32A);
         ASSERT_EQUALS("[test.cpp:6]: (warning) %s in format string (no. 5) requires 'char *' but the argument type is 'int'.\n"
                       "[test.cpp:6]: (warning) sprintf_s format string requires 5 parameters but 6 are given.\n"
@@ -2599,7 +2620,13 @@ private:
                       "[test.cpp:13]: (warning) %s in format string (no. 5) requires 'char *' but the argument type is 'int'.\n"
                       "[test.cpp:13]: (warning) printf format string requires 5 parameters but 6 are given.\n"
                       "[test.cpp:14]: (warning) %s in format string (no. 5) requires 'char *' but the argument type is 'int'.\n"
-                      "[test.cpp:14]: (warning) printf format string requires 5 parameters but 6 are given.\n", errout.str());
+                      "[test.cpp:14]: (warning) printf format string requires 5 parameters but 6 are given.\n"
+                      "[test.cpp:15]: (warning) %s in format string (no. 5) requires 'char *' but the argument type is 'int'.\n"
+                      "[test.cpp:15]: (warning) sprintf_s format string requires 5 parameters but 6 are given.\n"
+                      "[test.cpp:16]: (warning) %s in format string (no. 5) requires 'char *' but the argument type is 'int'.\n"
+                      "[test.cpp:16]: (warning) sprintf_s format string requires 5 parameters but 6 are given.\n"
+                      "[test.cpp:17]: (warning) %s in format string (no. 5) requires 'char *' but the argument type is 'int'.\n"
+                      "[test.cpp:17]: (warning) sprintf_s format string requires 5 parameters but 6 are given.\n", errout.str());
 
     }
 

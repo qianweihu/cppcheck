@@ -27,9 +27,13 @@ namespace {
     CheckStl instance;
 }
 
-// CWE ids used:
-static const struct CWE CWE664(664U);
-static const struct CWE CWE788(788U);
+// CWE IDs used:
+static const struct CWE CWE398(398U);   // Indicator of Poor Code Quality
+static const struct CWE CWE597(597U);   // Use of Wrong Operator in String Comparison
+static const struct CWE CWE664(664U);   // Improper Control of a Resource Through its Lifetime
+static const struct CWE CWE704(704U);   // Incorrect Type Conversion or Cast
+static const struct CWE CWE788(788U);   // Access of Memory Location After End of Buffer
+static const struct CWE CWE834(834U);   // Excessive Iteration
 
 // Error message for bad iterator usage..
 void CheckStl::invalidIteratorError(const Token *tok, const std::string &iteratorName)
@@ -720,7 +724,7 @@ void CheckStl::if_findError(const Token *tok, bool str)
                     "Either inefficient or wrong usage of string::find(). string::compare() will be faster if "
                     "string::find's result is compared with 0, because it will not scan the whole "
                     "string. If your intention is to check that there are no findings in the string, "
-                    "you should compare with std::string::npos.");
+                    "you should compare with std::string::npos.", CWE597, false);
     else
         reportError(tok, Severity::warning, "stlIfFind", "Suspicious condition. The result of find() is an iterator, but it is not properly checked.");
 }
@@ -794,7 +798,7 @@ void CheckStl::sizeError(const Token *tok)
                 "Checking for '" + varname + "' emptiness might be inefficient. "
                 "Using " + varname + ".empty() instead of " + varname + ".size() can be faster. " +
                 varname + ".size() can take linear time but " + varname + ".empty() is "
-                "guaranteed to take constant time.");
+                "guaranteed to take constant time.", CWE398, false);
 }
 
 void CheckStl::redundantCondition()
@@ -833,7 +837,7 @@ void CheckStl::redundantIfRemoveError(const Token *tok)
     reportError(tok, Severity::style, "redundantIfRemove",
                 "Redundant checking of STL container element existence before removing it.\n"
                 "Redundant checking of STL container element existence before removing it. "
-                "It is safe to call the remove method on a non-existing element.");
+                "It is safe to call the remove method on a non-existing element.", CWE398, false);
 }
 
 void CheckStl::missingComparison()
@@ -913,7 +917,7 @@ void CheckStl::missingComparisonError(const Token *incrementToken1, const Token 
            << "There is no comparison between these increments to prevent that the iterator is "
            << "incremented beyond the end.";
 
-    reportError(callstack, Severity::warning, "StlMissingComparison", errmsg.str());
+    reportError(callstack, Severity::warning, "StlMissingComparison", errmsg.str(), CWE834, false);
 }
 
 
@@ -1019,26 +1023,19 @@ void CheckStl::string_c_str()
             }
 
             // Using c_str() to get the return value is only dangerous if the function returns a char*
-            if (returnType == charPtr) {
-                if (Token::Match(tok, "return %var% . c_str|data ( ) ;") && isLocal(tok->next()) &&
-                    tok->next()->variable() && tok->next()->variable()->isStlStringType()) {
-                    string_c_strError(tok);
-                } else if (Token::Match(tok, "return %var% . str ( ) . c_str|data ( ) ;") && isLocal(tok->next()) &&
-                           tok->next()->variable() && tok->next()->variable()->isStlType(stl_string_stream)) {
-                    string_c_strError(tok);
-                } else if (Token::Match(tok, "return std :: string|wstring (") &&
-                           Token::Match(tok->linkAt(4), ") . c_str|data ( ) ;")) {
-                    string_c_strError(tok);
-                } else if (Token::Match(tok, "return %name% (") && Token::Match(tok->linkAt(2), ") . c_str|data ( ) ;")) {
-                    const Function* func = tok->next()->function();
-                    if (func && Token::Match(func->tokenDef->tokAt(-3), "std :: string|wstring"))
-                        string_c_strError(tok);
-                } else if (Token::simpleMatch(tok, "return (") &&
-                           Token::Match(tok->next()->link(), ") . c_str|data ( ) ;")) {
+            if ((returnType == charPtr || (printPerformance && (returnType == stdString || returnType == stdStringConstRef))) && tok->str() == "return") {
+                bool err = false;
+
+                const Token* tok2 = tok->next();
+                if (Token::Match(tok2, "std :: string|wstring (") &&
+                    Token::Match(tok2->linkAt(3), ") . c_str|data ( ) ;")) {
+                    err = true;
+                } else if (Token::simpleMatch(tok2, "(") &&
+                           Token::Match(tok2->link(), ") . c_str|data ( ) ;")) {
                     // Check for "+ localvar" or "+ std::string(" inside the bracket
                     bool is_implicit_std_string = printInconclusive;
-                    const Token *search_end = tok->next()->link();
-                    for (const Token *search_tok = tok->tokAt(2); search_tok != search_end; search_tok = search_tok->next()) {
+                    const Token *search_end = tok2->link();
+                    for (const Token *search_tok = tok2->next(); search_tok != search_end; search_tok = search_tok->next()) {
                         if (Token::Match(search_tok, "+ %var%") && isLocal(search_tok->next()) &&
                             search_tok->next()->variable() && search_tok->next()->variable()->isStlStringType()) {
                             is_implicit_std_string = true;
@@ -1050,19 +1047,47 @@ void CheckStl::string_c_str()
                     }
 
                     if (is_implicit_std_string)
-                        string_c_strError(tok);
+                        err = true;
                 }
-            }
-            // Using c_str() to get the return value is redundant if the function returns std::string or const std::string&.
-            else if (printPerformance && (returnType == stdString || returnType == stdStringConstRef)) {
-                if (tok->str() == "return") {
-                    const Token* tok2 = Token::findsimplematch(tok->next(), ";");
-                    if (Token::Match(tok2->tokAt(-4), ". c_str|data ( )")) {
-                        tok2 = tok2->tokAt(-5);
-                        if (tok2->variable() && tok2->variable()->isStlStringType()) { // return var.c_str();
-                            string_c_strReturn(tok);
-                        }
-                    }
+
+                bool local = false;
+                bool ptr = false;
+                const Variable* lastVar = nullptr;
+                const Function* lastFunc = nullptr;
+                bool funcStr = false;
+                if (Token::Match(tok2, "%var% .")) {
+                    local = isLocal(tok2);
+                    ptr = tok2->variable() && tok2->variable()->isPointer();
+                }
+                while (tok2) {
+                    if (Token::Match(tok2, "%var% .|::")) {
+                        if (ptr)
+                            local = false;
+                        lastVar = tok2->variable();
+                        tok2 = tok2->tokAt(2);
+                    } else if (Token::Match(tok2, "%name% (") && Token::simpleMatch(tok2->linkAt(1), ") .")) {
+                        lastFunc = tok2->function();
+                        local = false;
+                        funcStr = tok2->str() == "str";
+                        tok2 = tok2->linkAt(1)->tokAt(2);
+                    } else
+                        break;
+                }
+
+                if (Token::Match(tok2, "c_str|data ( ) ;")) {
+                    if ((local || returnType != charPtr) && lastVar && lastVar->isStlStringType())
+                        err = true;
+                    else if (funcStr && lastVar && lastVar->isStlType(stl_string_stream))
+                        err = true;
+                    else if (lastFunc && Token::Match(lastFunc->tokenDef->tokAt(-3), "std :: string|wstring"))
+                        err = true;
+                }
+
+                if (err) {
+                    if (returnType == charPtr)
+                        string_c_strError(tok);
+                    else
+                        string_c_strReturn(tok);
                 }
             }
         }
@@ -1084,7 +1109,7 @@ void CheckStl::string_c_strError(const Token* tok)
 void CheckStl::string_c_strReturn(const Token* tok)
 {
     reportError(tok, Severity::performance, "stlcstrReturn", "Returning the result of c_str() in a function that returns std::string is slow and redundant.\n"
-                "The conversion from const char* as returned by c_str() to std::string creates an unnecessary string copy. Solve that by directly returning the string.");
+                "The conversion from const char* as returned by c_str() to std::string creates an unnecessary string copy. Solve that by directly returning the string.", CWE704, false);
 }
 
 void CheckStl::string_c_strParam(const Token* tok, unsigned int number)
@@ -1092,7 +1117,7 @@ void CheckStl::string_c_strParam(const Token* tok, unsigned int number)
     std::ostringstream oss;
     oss << "Passing the result of c_str() to a function that takes std::string as argument no. " << number << " is slow and redundant.\n"
         "The conversion from const char* as returned by c_str() to std::string creates an unnecessary string copy. Solve that by directly passing the string.";
-    reportError(tok, Severity::performance, "stlcstrParam", oss.str());
+    reportError(tok, Severity::performance, "stlcstrParam", oss.str(), CWE704, false);
 }
 
 static bool hasArrayEnd(const Token *tok1)
@@ -1116,7 +1141,7 @@ void CheckStl::checkAutoPointer()
     std::set<unsigned int> autoPtrVarId;
     std::map<unsigned int, const std::string> mallocVarId; // variables allocated by the malloc-like function
     const char STL_CONTAINER_LIST[] = "array|bitset|deque|list|forward_list|map|multimap|multiset|priority_queue|queue|set|stack|vector|hash_map|hash_multimap|hash_set|unordered_map|unordered_multimap|unordered_set|unordered_multiset|basic_string";
-    const int malloc = _settings->library.alloc("malloc"); // allocation function, which are not compatible with auto_ptr
+    const int malloc = _settings->library.allocId("malloc"); // allocation function, which are not compatible with auto_ptr
     const bool printStyle = _settings->isEnabled("style");
 
     for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
@@ -1132,7 +1157,7 @@ void CheckStl::checkAutoPointer()
                     if (Token::Match(tok3, "( new %type%") && hasArrayEndParen(tok3)) {
                         autoPointerArrayError(tok2->next());
                     }
-                    if (Token::Match(tok3, "( %name% (") && malloc && _settings->library.alloc(tok3->next()) == malloc) {
+                    if (Token::Match(tok3, "( %name% (") && malloc && _settings->library.alloc(tok3->next(), -1) == malloc) {
                         // malloc-like function allocated memory passed to the auto_ptr constructor -> error
                         autoPointerMallocError(tok2->next(), tok3->next()->str());
                     }
@@ -1176,7 +1201,7 @@ void CheckStl::checkAutoPointer()
                 if (iter != autoPtrVarId.end()) {
                     autoPointerArrayError(tok);
                 }
-            } else if (Token::Match(tok, "%var% = %name% (") && malloc && _settings->library.alloc(tok->tokAt(2)) == malloc) {
+            } else if (Token::Match(tok, "%var% = %name% (") && malloc && _settings->library.alloc(tok->tokAt(2), -1) == malloc) {
                 // C library function like 'malloc' used together with auto pointer -> error
                 std::set<unsigned int>::const_iterator iter = autoPtrVarId.find(tok->varId());
                 if (iter != autoPtrVarId.end()) {
@@ -1185,7 +1210,7 @@ void CheckStl::checkAutoPointer()
                     // it is not an auto pointer variable and it is allocated by malloc like function.
                     mallocVarId.insert(std::make_pair(tok->varId(), tok->strAt(2)));
                 }
-            } else if (Token::Match(tok, "%var% . reset ( %name% (") && malloc && _settings->library.alloc(tok->tokAt(4)) == malloc) {
+            } else if (Token::Match(tok, "%var% . reset ( %name% (") && malloc && _settings->library.alloc(tok->tokAt(4), -1) == malloc) {
                 // C library function like 'malloc' used when resetting auto pointer -> error
                 std::set<unsigned int>::const_iterator iter = autoPtrVarId.find(tok->varId());
                 if (iter != autoPtrVarId.end()) {

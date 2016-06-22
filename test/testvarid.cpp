@@ -148,6 +148,7 @@ private:
         TEST_CASE(varid_inheritedMembers); // #4101
         TEST_CASE(varid_header); // #6386
         TEST_CASE(varid_rangeBasedFor);
+        TEST_CASE(varid_structinit); // #6406
 
         TEST_CASE(varidclass1);
         TEST_CASE(varidclass2);
@@ -830,7 +831,7 @@ private:
         {
             const char code[] = "void f(FOO::BAR const);\n";
             ASSERT_EQUALS("\n\n##file 0\n"
-                          "1: void f ( FOO :: BAR const ) ;\n",
+                          "1: void f ( const FOO :: BAR ) ;\n",
                           tokenize(code));
         }
         {
@@ -1628,6 +1629,18 @@ private:
                       "9: h ( a@1 , b@2 , c@3 , d@4 ) ;\n"
                       "10: }\n",
                       tokenize(code3));
+
+        // #7444
+        const char code4[] = "class Foo {\n"
+                             "    void f(float a) { this->a = a; }\n"
+                             "    union { float a; int b; };\n"
+                             "};";
+        ASSERT_EQUALS("\n\n##file 0\n"
+                      "1: class Foo {\n"
+                      "2: void f ( float a@1 ) { this . a@2 = a@1 ; }\n"
+                      "3: union { float a@2 ; int b@3 ; } ;\n"
+                      "4: } ;\n",
+                      tokenize(code4));
     }
 
     void varid_in_class12() { // #4637 - method
@@ -2428,6 +2441,24 @@ private:
                                "        break;\n"
                                "    }\n"
                                "}", false, "test.c"));
+    }
+
+    void varid_structinit() { // #6406
+        ASSERT_EQUALS("\n\n##file 0\n"
+                      "1: void foo ( ) {\n"
+                      "2: struct ABC abc@1 ; abc@1 = { . a@2 = 0 , . b@3 = 1 } ;\n"
+                      "3: }\n",
+                      tokenize("void foo() {\n"
+                               "  struct ABC abc = {.a=0,.b=1};\n"
+                               "}"));
+
+        ASSERT_EQUALS("\n\n##file 0\n"
+                      "1: void foo ( ) {\n"
+                      "2: struct ABC abc@1 ; abc@1 = { . a@2 = abc@1 . a@2 , . b@3 = abc@1 . b@3 } ;\n"
+                      "3: }\n",
+                      tokenize("void foo() {\n"
+                               "  struct ABC abc = {.a=abc.a,.b=abc.b};\n"
+                               "}"));
     }
 
     void varidclass1() {

@@ -31,7 +31,12 @@ public:
     }
 
 private:
+    Settings _settings;
+
     void run() {
+        LOAD_LIB_2(_settings.library, "std.cfg");
+
+
         TEST_CASE(emptyBrackets);
 
         TEST_CASE(zeroDiv1);
@@ -172,7 +177,6 @@ private:
         errout.str("");
 
         if (!settings) {
-            static Settings _settings;
             settings = &_settings;
         }
         settings->addEnabled("style");
@@ -312,6 +316,11 @@ private:
 
         check("void foo(int& i) {\n"
               "    i %= 0;\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (error) Division by zero.\n", errout.str());
+
+        check("uint8_t foo(uint8_t i) {\n"
+              "    return i / 0;\n"
               "}");
         ASSERT_EQUALS("[test.cpp:2]: (error) Division by zero.\n", errout.str());
     }
@@ -2998,16 +3007,6 @@ private:
               "}");
         ASSERT_EQUALS("", errout.str());
 
-        // #6406 - false positive for struct with designated initializer
-        check("struct callbacks {\n"
-              "    void (*something)(void);\n"
-              "};\n"
-              "void something(void) {}\n"
-              "void f() {\n"
-              "    struct callbacks ops = { .something = something };\n"
-              "}\n");
-        TODO_ASSERT_EQUALS("", "[test.cpp:6]: (warning) Redundant assignment of 'something' to itself.\n", errout.str());
-
         // #6406 - designated initializer doing bogus self assignment
         check("struct callbacks {\n"
               "    void (*something)(void);\n"
@@ -5390,6 +5389,23 @@ private:
               "    return i;\n"
               "}");
         ASSERT_EQUALS("", errout.str());
+
+        // #7175 - read+write
+        check("void f() {\n"
+              "    char buf[100];\n"
+              "    strcpy(buf, x);\n"
+              "    strcpy(buf, dostuff(buf));\n" // <- read + write
+              "    strcpy(buf, x);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void f() {\n"
+              "    char buf[100];\n"
+              "    strcpy(buf, x);\n"
+              "    strcpy(buf, dostuff(buf));\n"
+              "    strcpy(buf, x);\n"
+              "}");
+        TODO_ASSERT_EQUALS("error", "", errout.str());
     }
 
     void varFuncNullUB() { // #4482

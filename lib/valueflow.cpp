@@ -119,7 +119,9 @@ static bool bailoutFunctionPar(const Token *tok, const ValueFlow::Value &value, 
         tok = tok->previous();
     }
     tok = tok ? tok->previous() : nullptr;
-    if (!Token::Match(tok,"%name% ("))
+    if (tok && tok->link() && tok->str() == ">")
+        tok = tok->link()->previous();
+    if (!Token::Match(tok, "%name% ("))
         return false; // not a function => do not bailout
 
     if (!tok->function()) {
@@ -568,14 +570,26 @@ static void setTokenValue(Token* tok, const ValueFlow::Value &value)
     }
 }
 
+
+// Handle various constants..
+static void valueFlowSetConstantValue(const Token *tok)
+{
+    if ((tok->isNumber() && MathLib::isInt(tok->str())) || (tok->tokType() == Token::eChar)) {
+        ValueFlow::Value value(MathLib::toLongNumber(tok->str()));
+        value.setKnown();
+        setTokenValue(const_cast<Token *>(tok), value);
+    } else if (tok->enumerator() && tok->enumerator()->value_known) {
+        ValueFlow::Value value(tok->enumerator()->value);
+        value.setKnown();
+        setTokenValue(const_cast<Token *>(tok), value);
+    }
+}
+
+
 static void valueFlowNumber(TokenList *tokenlist)
 {
     for (Token *tok = tokenlist->front(); tok; tok = tok->next()) {
-        if ((tok->isNumber() && MathLib::isInt(tok->str())) || (tok->tokType() == Token::eChar)) {
-            ValueFlow::Value value(MathLib::toLongNumber(tok->str()));
-            value.setKnown();
-            setTokenValue(tok, value);
-        }
+        valueFlowSetConstantValue(tok);
     }
 
     if (tokenlist->isCPP()) {
@@ -2361,6 +2375,17 @@ static void valueFlowFunctionReturn(TokenList *tokenlist, ErrorLogger *errorLogg
     }
 }
 
+const ValueFlow::Value *ValueFlow::valueFlowConstantFoldAST(const Token *expr)
+{
+    if (expr && expr->values.empty()) {
+        valueFlowConstantFoldAST(expr->astOperand1());
+        valueFlowConstantFoldAST(expr->astOperand2());
+        valueFlowSetConstantValue(expr);
+    }
+    return expr && expr->values.size() == 1U && expr->values.front().isKnown() ? &expr->values.front() : nullptr;
+}
+
+
 void ValueFlow::setValues(TokenList *tokenlist, SymbolDatabase* symboldatabase, ErrorLogger *errorLogger, const Settings *settings)
 {
     for (Token *tok = tokenlist->front(); tok; tok = tok->next())
@@ -2398,3 +2423,5 @@ std::string ValueFlow::eitherTheConditionIsRedundant(const Token *condition)
     }
     return "Either the condition '" + condition->expressionString() + "' is redundant";
 }
+
+

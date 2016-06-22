@@ -151,6 +151,7 @@ private:
         TEST_CASE(simplifyTypedef115); // ticket #6998
         TEST_CASE(simplifyTypedef116); // ticket #5624
         TEST_CASE(simplifyTypedef117); // ticket #6507
+        TEST_CASE(simplifyTypedef118); // ticket #5749
 
         TEST_CASE(simplifyTypedefFunction1);
         TEST_CASE(simplifyTypedefFunction2); // ticket #1685
@@ -440,8 +441,10 @@ private:
                             "abc e1;\n"
                             "XYZ e2;";
 
-        const char expected[] = "int e1 ; "
-                                "int e2 ;";
+        const char expected[] = "enum abc { a = 0 , b = 1 , c = 2 } ; "
+                                "enum xyz { x = 0 , y = 1 , z = 2 } ; "
+                                "abc e1 ; "
+                                "enum xyz e2 ;";
 
         ASSERT_EQUALS(expected, tok(code, false));
     }
@@ -1409,9 +1412,9 @@ private:
                             "_Iterator v3;";
 
         // The expected result..
-        const char expected[] = "long * v1 ; "
-                                "void * v2 [ 2 ] ; "
-                                "int * * v3 ;";
+        const char expected[] = "long * const v1 ; "
+                                "void * const v2 [ 2 ] ; "
+                                "int * const * v3 ;";
         ASSERT_EQUALS(expected, tok(code));
 
         // Check for output..
@@ -1492,7 +1495,7 @@ private:
                             "    localEntitiyAddFunc_t f;\n"
                             "}";
         // The expected result..
-        const char expected[] = "void f ( ) { int b ; int * f ; }";
+        const char expected[] = "enum qboolean { qfalse , qtrue } ; void f ( ) { qboolean b ; qboolean * f ; }";
         ASSERT_EQUALS(expected, tok(code, false));
         ASSERT_EQUALS("", errout.str());
     }
@@ -2287,7 +2290,14 @@ private:
                             "    };\n"
                             "};";
 
-        const char expected[] = "template < typename DataType , typename SpaceType , typename TrafoConfig > class AsmTraits1 { } ;";
+        const char expected[] = "template < "
+                                "typename DataType , "
+                                "typename SpaceType , "
+                                "typename TrafoConfig > "
+                                "class AsmTraits1 { "
+                                "enum Anonymous0 { "
+                                "domain_dim = SpaceType :: TrafoType :: template Evaluator < SpaceType :: TrafoType :: ShapeType , DataType > :: Type :: domain_dim , "
+                                "} ; } ;";
         ASSERT_EQUALS(expected, tok(code));
         ASSERT_EQUALS("", errout.str());
     }
@@ -2302,7 +2312,7 @@ private:
     void simplifyTypedef114() {     // ticket #7058
         const char code[] = "typedef struct { enum {A,B}; } AB;\n"
                             "x=AB::B;";
-        const char expected[] = "struct AB { } ; x = 1 ;";
+        const char expected[] = "struct AB { enum Anonymous0 { A , B } ; } ; x = AB :: B ;";
         ASSERT_EQUALS(expected, tok(code));
     }
 
@@ -2341,6 +2351,22 @@ private:
                                 "struct bstr bstr0 ( const char * s ) { "
                                 "return ( struct bstr ) { ( unsigned char * ) s , s ? strlen ( s ) : 0 } ; "
                                 "}";
+        ASSERT_EQUALS(expected, tok(code, false));
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void simplifyTypedef118() { // #5749
+        const char code[] = "struct ClassyClass {\n"
+                            "int id;\n"
+                            "typedef int (ClassyClass::*funky_type);\n"
+                            "operator funky_type() {\n"
+                            "return &ClassyClass::id;\n"
+                            "}}";
+        const char expected[] = "struct ClassyClass { "
+                                "int id ; "
+                                "operatorintClassyClass::* ( ) { "
+                                "return & ClassyClass :: id ; "
+                                "} }";
         ASSERT_EQUALS(expected, tok(code, false));
         ASSERT_EQUALS("", errout.str());
     }
@@ -2916,21 +2942,20 @@ private:
     }
 
     void simplifyTypedefFunction10() {
-        const char code[] = "enum Format_E1 { FORMAT11 FORMAT12 } Format_T1;\n"
+        const char code[] = "enum Format_E1 { FORMAT11, FORMAT12 } Format_T1;\n"
                             "namespace MySpace {\n"
-                            "   enum Format_E2 { FORMAT21 FORMAT22 } Format_T2;\n"
+                            "   enum Format_E2 { FORMAT21, FORMAT22 } Format_T2;\n"
                             "}\n"
                             "typedef Format_E1 (**PtrToFunPtr_Type1)();\n"
                             "typedef MySpace::Format_E2 (**PtrToFunPtr_Type2)();\n"
                             "PtrToFunPtr_Type1 t1;\n"
                             "PtrToFunPtr_Type2 t2;";
-        ASSERT_EQUALS("int Format_T1 ; "
-                      "namespace MySpace "
-                      "{ "
-                      "int Format_T2 ; "
+        ASSERT_EQUALS("enum Format_E1 { FORMAT11 , FORMAT12 } ; enum Format_E1 Format_T1 ; "
+                      "namespace MySpace { "
+                      "enum Format_E2 { FORMAT21 , FORMAT22 } ; enum Format_E2 Format_T2 ; "
                       "} "
-                      "int * * t1 ; "
-                      "int * * t2 ;",
+                      "Format_E1 * * t1 ; "
+                      "MySpace :: Format_E2 * * t2 ;",
                       tok(code,false));
     }
 

@@ -31,6 +31,8 @@
 /** @brief simple math functions that uses operands stored in std::string. useful when performing math on tokens. */
 
 class CPPCHECKLIB MathLib {
+    friend class TestMathLib;
+
 public:
     /** @brief value class */
     class value {
@@ -120,6 +122,19 @@ public:
      * */
     static MathLib::bigint characterLiteralToLongNumber(const std::string& str);
 
+    /**
+     * \param iCode Code being considered
+     * \param iPos A posision within iCode
+     * \return Whether iCode[iPos] is a C++14 digit separator
+     */
+    static bool isDigitSeparator(const std::string& iCode, std::string::size_type iPos);
+
+private:
+    /*
+     * \param iLiteral A character literal
+     * \return The equivalent character literal with all escapes interpreted
+     */
+    static std::string normalizeCharacterLiteral(const std::string& iLiteral);
 };
 
 MathLib::value operator+(const MathLib::value &v1, const MathLib::value &v2);

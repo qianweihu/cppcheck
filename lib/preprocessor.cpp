@@ -697,7 +697,7 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
             }
 
             // C++14 digit separators
-            if (ch == '\'' && std::isxdigit(previous))
+            if (MathLib::isDigitSeparator(str, i))
                 ; // Just skip it.
 
             // String or char constants..
@@ -1346,11 +1346,10 @@ std::list<std::string> Preprocessor::getcfgs(const std::string &filedata, const 
                 }
             }
             if (par != 0) {
-                std::ostringstream lineStream;
-                lineStream << __LINE__;
-                const std::string errorId = "preprocessor" + lineStream.str();
+                std::ostringstream errorId;
+                errorId << "preprocessor" <<  __LINE__;
                 const std::string errorText = "mismatching number of '(' and ')' in this line: " + def;
-                writeError(filename, linenr, _errorLogger, errorId, errorText);
+                writeError(filename, linenr, _errorLogger, errorId.str(), errorText);
                 ret.clear();
                 return ret;
             }
@@ -1455,8 +1454,7 @@ std::list<std::string> Preprocessor::getcfgs(const std::string &filedata, const 
                 deflist.back() = ndeflist.back();
                 ndeflist.pop_back();
             } else {
-                std::string tempDef((deflist.back() == "1") ? "0" : "1");
-                deflist.back() = tempDef;
+                deflist.back() = (deflist.back() == "1") ? "0" : "1";
             }
         }
 
@@ -2741,6 +2739,13 @@ public:
                 pos = 0;
                 while ((pos = macrocode.find("__VA_ARGS__", pos)) != std::string::npos) {
                     macrocode.erase(pos, 11);
+                    if (pos > 0U &&
+                        macrocode[pos-1U] == '#' &&
+                        (pos == 1U || macrocode[pos-2U]!='#')) {
+                        --pos;
+                        macrocode.erase(pos,1U);
+                        s = '\"' + s + '\"';
+                    }
                     macrocode.insert(pos, s);
                     pos += s.length();
                 }
@@ -2794,21 +2799,22 @@ public:
                                     // Macro had more parameters than caller used.
                                     macrocode = "";
                                     return false;
-                                } else if (stringify) {
-                                    const std::string &s(givenparams[i]);
-                                    std::ostringstream ostr;
-                                    ostr << "\"";
-                                    for (std::string::size_type j = 0; j < s.size(); ++j) {
-                                        if (s[j] == '\\' || s[j] == '\"')
-                                            ostr << '\\';
-                                        ostr << s[j];
-                                    }
-                                    str = ostr.str() + "\"";
                                 } else
                                     str = givenparams[i];
 
                                 break;
                             }
+                        }
+
+                        if (stringify) {
+                            std::ostringstream ostr;
+                            ostr << "\"";
+                            for (std::string::size_type j = 0; j < str.size(); ++j) {
+                                if (str[j] == '\\' || str[j] == '\"')
+                                    ostr << '\\';
+                                ostr << str[j];
+                            }
+                            str = ostr.str() + "\"";
                         }
 
                         // expand nopar macro

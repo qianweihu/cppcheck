@@ -350,10 +350,36 @@ private:
         ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'x' used instead of size of its data.\n", errout.str());
 
         check("void f() {\n"
+              "    int *x = (int*)malloc(sizeof(x));\n"
+              "    free(x);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'x' used instead of size of its data.\n", errout.str());
+
+        check("void f() {\n"
+              "    int *x = static_cast<int*>(malloc(sizeof(x)));\n"
+              "    free(x);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'x' used instead of size of its data.\n", errout.str());
+
+        check("void f() {\n"
               "    int *x = malloc(sizeof(&x));\n"
               "    free(x);\n"
               "}");
         ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'x' used instead of size of its data.\n", errout.str());
+
+        check("void f() {\n"
+              "    int *x = malloc(sizeof(int*));\n"
+              "    free(x);\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'x' used instead of size of its data.\n", errout.str());
+
+        check("void f() {\n"
+              "    int *x = malloc(sizeof(int));\n"
+              "    free(x);\n"
+              "    int **y = malloc(sizeof(int*));\n"
+              "    free(y);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
 
         check("void f() {\n"
               "    int *x = malloc(100 * sizeof(x));\n"
@@ -517,6 +543,11 @@ private:
             "}");
         ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'buf1' used instead of size of its data.\n", errout.str());
 
+        check("int fun(const char *buf2) {\n"
+              "  return strncmp(buf1, buf2, sizeof(char*)) == 0;\n"
+              "}");
+        ASSERT_EQUALS("[test.cpp:2]: (warning) Size of pointer 'buf2' used instead of size of its data.\n", errout.str());
+
         // #ticket 3874
         check("void f()\n"
               "{\n"
@@ -540,6 +571,20 @@ private:
 
         check("int f(char* aug) {\n"
               "  memmove(aug + extra_string, aug, buf - (bfd_byte *)aug);\n" // #7100
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        // #7518
+        check("bool create_iso_definition(cpp_reader *pfile, cpp_macro *macro) {\n"
+              "  cpp_token *token;\n"
+              "  cpp_hashnode **params = malloc(sizeof(cpp_hashnode *) * macro->paramc);\n"
+              "  memcpy(params, macro->params, sizeof(cpp_hashnode *) * macro->paramc);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check("void* foo() {\n"
+              "  void* AtomName = malloc(sizeof(char *) * 34);\n"
+              "  return AtomName;\n"
               "}");
         ASSERT_EQUALS("", errout.str());
     }

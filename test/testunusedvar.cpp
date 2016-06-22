@@ -119,6 +119,7 @@ private:
         TEST_CASE(localvararray1);  // ticket #2780
         TEST_CASE(localvararray2);  // ticket #3438
         TEST_CASE(localvararray3);  // ticket #3980
+        TEST_CASE(localvararray4);  // ticket #4839
         TEST_CASE(localvarstring1);
         TEST_CASE(localvarstring2); // ticket #2929
         TEST_CASE(localvarconst1);
@@ -167,6 +168,8 @@ private:
         TEST_CASE(crash1);
         TEST_CASE(crash2);
         TEST_CASE(usingNamespace);     // #4585
+
+        TEST_CASE(lambdaFunction); // #5078
     }
 
     void checkStructMemberUsage(const char code[]) {
@@ -3191,38 +3194,6 @@ private:
                               "}");
         ASSERT_EQUALS("", errout.str());
 
-        functionVariableUsage("void foo() {\n"
-                              "    int i = -1;\n"
-                              "    int a[] = {1,2,3};\n"
-                              "    FOREACH_X (int x, a) {\n"
-                              "        i = x;\n"
-                              "    }\n"
-                              "}");
-        ASSERT_EQUALS("[test.cpp:5]: (style) Variable 'i' is assigned a value that is never used.\n", errout.str());
-
-        functionVariableUsage("void foo() {\n"
-                              "    int i = -1;\n"
-                              "    int a[] = {1,2,3};\n"
-                              "    X (int x, a) {\n"
-                              "        if (i==x) return x;\n"
-                              "        i = x;\n"
-                              "    }\n"
-                              "}");
-        ASSERT_EQUALS("[test.cpp:6]: (style) Variable 'i' is assigned a value that is never used.\n", errout.str());
-
-        // #4956 - assignment in for_each
-        functionVariableUsage("void f(std::vector<int> ints) {\n"
-                              "  int x = 0;\n"
-                              "  std::for_each(ints.begin(), ints.end(), [&x](int i){ dostuff(x); x = i; });\n"
-                              "}");
-        ASSERT_EQUALS("", errout.str());
-
-        functionVariableUsage("void f(std::vector<int> ints) {\n"
-                              "  int x = 0;\n"
-                              "  std::for_each(ints.begin(), ints.end(), [&x](int i){ x += i; });\n"
-                              "}");
-        ASSERT_EQUALS("[test.cpp:3]: (style) Variable 'x' is assigned a value that is never used.\n", errout.str());
-
         // #5154 - MSVC 'for each'
         functionVariableUsage("void f() {\n"
                               "  std::map<int,int> ints;\n"
@@ -3654,6 +3625,16 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void localvararray4() {
+        functionVariableUsage("void foo() {\n"
+                              "    int p[1];\n"
+                              "    int *pp[0];\n"
+                              "    p[0] = 1;\n"
+                              "    *pp[0] = p[0];\n"
+                              "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
     void localvarstring1() { // ticket #1597
         functionVariableUsage("void foo() {\n"
                               "    std::string s;\n"
@@ -3957,6 +3938,38 @@ private:
                               "   return j;\n"
                               "}"); // #4585
         ASSERT_EQUALS("", errout.str());
+    }
+
+    void lambdaFunction() {
+        // #7026
+        functionVariableUsage("void f() {\n"
+                              "  bool first = true;\n"
+                              "\n"
+                              "  auto do_something = [&first]() {\n"
+                              "    if (first) {\n"
+                              "      first = false;\n"
+                              "    } else {\n"
+                              "      dostuff();\n"
+                              "    }\n"
+                              "  };\n"
+                              "  do_something();\n"
+                              "  do_something();\n"
+                              "}");
+        ASSERT_EQUALS("", errout.str());
+
+
+        // #4956 - assignment in for_each
+        functionVariableUsage("void f(std::vector<int> ints) {\n"
+                              "  int x = 0;\n"
+                              "  std::for_each(ints.begin(), ints.end(), [&x](int i){ dostuff(x); x = i; });\n"
+                              "}");
+        ASSERT_EQUALS("", errout.str());
+
+        functionVariableUsage("void f(std::vector<int> ints) {\n"
+                              "  int x = 0;\n"
+                              "  std::for_each(ints.begin(), ints.end(), [&x](int i){ x += i; });\n"
+                              "}");
+        TODO_ASSERT_EQUALS("[test.cpp:3]: (style) Variable 'x' is assigned a value that is never used.\n", "", errout.str());
     }
 };
 

@@ -214,7 +214,7 @@ unsigned int CppCheck::processFile(const std::string& filename, std::istream& fi
                 // Create tokens, skip rest of iteration if failed
                 std::istringstream istr(codeWithoutCfg);
                 Timer timer("Tokenizer::createTokens", _settings.showtime, &S_timerResults);
-                bool result = _tokenizer.createTokens(istr, filename.c_str());
+                bool result = _tokenizer.createTokens(istr, filename);
                 timer.Stop();
                 if (!result)
                     continue;
@@ -297,6 +297,8 @@ unsigned int CppCheck::processFile(const std::string& filename, std::istream& fi
             fdump << "</dumps>" << std::endl;
 
     } catch (const std::runtime_error &e) {
+        internalError(filename, e.what());
+    } catch (const std::bad_alloc &e) {
         internalError(filename, e.what());
     } catch (const InternalError &e) {
         internalError(filename, e.errorMessage);
@@ -586,7 +588,7 @@ void CppCheck::reportErr(const ErrorLogger::ErrorMessage &msg)
             return;
     }
 
-    if (!_settings.nofail.isSuppressed(msg._id, file, line))
+    if (!_settings.nofail.isSuppressed(msg._id, file, line) && !_settings.nomsg.isSuppressed(msg._id, file, line))
         exitcode = 1;
 
     _errorList.push_back(errmsg);

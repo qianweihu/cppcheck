@@ -198,6 +198,7 @@ private:
         TEST_CASE(va_args_2);
         TEST_CASE(va_args_3);
         TEST_CASE(va_args_4);
+        TEST_CASE(va_args_5);
         TEST_CASE(multi_character_character);
 
         TEST_CASE(stringify);
@@ -350,6 +351,11 @@ private:
         ASSERT_EQUALS("", errout.str());
 
         ASSERT_EQUALS("int i = 0x0F0FFFFF;", preprocessorRead("int i = 0x0F0F'FFFF;"));
+        ASSERT_EQUALS("", errout.str());
+
+        // Ticket #7137
+        const char code[] = "void t(char c) { switch (c) { case'M': break; } }";
+        ASSERT_EQUALS(code, preprocessorRead(code));
         ASSERT_EQUALS("", errout.str());
     }
 
@@ -2137,6 +2143,16 @@ private:
         const char filedata[] = "#define FRED(name, ...) name (__VA_ARGS__)\n"
                                 "FRED(abc, 123)\n";
         ASSERT_EQUALS("\n$abc($123)\n", OurPreprocessor::expandMacros(filedata));
+    }
+
+    void va_args_5() {
+        const char filedata1[] = "#define A(...) #__VA_ARGS__\n"
+                                 "A(123)\n";
+        ASSERT_EQUALS("\n$\"123\"\n", OurPreprocessor::expandMacros(filedata1));
+
+        const char filedata2[] = "#define A(X,...) X(#__VA_ARGS__)\n"
+                                 "A(f,123)\n";
+        ASSERT_EQUALS("\n$f(\"123\")\n", OurPreprocessor::expandMacros(filedata2));
     }
 
 

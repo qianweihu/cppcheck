@@ -33,6 +33,8 @@ namespace {
     CheckIO instance;
 }
 
+// CVE ID used:
+static const CWE CWE398(398U);  // Indicator of Poor Code Quality
 static const CWE CWE664(664U);
 static const CWE CWE685(685U);
 static const CWE CWE687(687U);
@@ -333,7 +335,7 @@ void CheckIO::checkFileUsage()
 void CheckIO::fflushOnInputStreamError(const Token *tok, const std::string &varname)
 {
     reportError(tok, Severity::portability,
-                "fflushOnInputStream", "fflush() called on input stream '" + varname + "' may result in undefined behaviour on non-linux systems.");
+                "fflushOnInputStream", "fflush() called on input stream '" + varname + "' may result in undefined behaviour on non-linux systems.", CWE398, false);
 }
 
 void CheckIO::ioWithoutPositioningError(const Token *tok)
@@ -364,7 +366,7 @@ void CheckIO::useClosedFileError(const Token *tok)
 void CheckIO::seekOnAppendedFileError(const Token *tok)
 {
     reportError(tok, Severity::warning,
-                "seekOnAppendedFile", "Repositioning operation performed on a file opened in append mode has no effect.");
+                "seekOnAppendedFile", "Repositioning operation performed on a file opened in append mode has no effect.", CWE398, false);
 }
 
 
@@ -420,10 +422,10 @@ void CheckIO::invalidScanf()
 
 void CheckIO::invalidScanfError(const Token *tok)
 {
-
+    std::string fname = (tok ? tok->str() : std::string("scanf"));
     reportError(tok, Severity::warning,
-                "invalidscanf", "scanf without field width limits can crash with huge input data.\n"
-                "scanf without field width limits can crash with huge input data. Add a field width "
+                "invalidscanf", fname + "() without field width limits can crash with huge input data.\n" +
+                fname + "() without field width limits can crash with huge input data. Add a field width "
                 "specifier to fix this problem:\n"
                 "    %s => %20s\n"
                 "\n"
@@ -682,7 +684,7 @@ void CheckIO::checkFormatString(const Token * const tok,
                                     if (!width.empty()) {
                                         int numWidth = std::atoi(width.c_str());
                                         if (numWidth != (argInfo.variableInfo->dimension(0) - 1))
-                                            invalidScanfFormatWidthError(tok, numFormat, numWidth, argInfo.variableInfo);
+                                            invalidScanfFormatWidthError(tok, numFormat, numWidth, argInfo.variableInfo, 's');
                                     }
                                 }
                                 if (argListTok && argListTok->tokType() != Token::eString &&
@@ -701,6 +703,13 @@ void CheckIO::checkFormatString(const Token * const tok,
                                 done = true;
                                 break;
                             case 'c':
+                                if (argInfo.variableInfo && argInfo.isKnownType() && argInfo.variableInfo->isArray() && (argInfo.variableInfo->dimensions().size() == 1) && argInfo.variableInfo->dimensions()[0].known) {
+                                    if (!width.empty()) {
+                                        int numWidth = std::atoi(width.c_str());
+                                        if (numWidth > argInfo.variableInfo->dimension(0))
+                                            invalidScanfFormatWidthError(tok, numFormat, numWidth, argInfo.variableInfo, 'c');
+                                    }
+                                }
                                 if (scanf_s) {
                                     numSecure++;
                                     if (argListTok) {
@@ -1380,9 +1389,7 @@ CheckIO::ArgumentInfo::ArgumentInfo(const Token * tok, const Settings *settings,
                 tempToken->insertToken("a");
                 tempToken = tempToken->next();
             }
-            if (valuetype->pointer == 0U && valuetype->type <= ValueType::INT)
-                tempToken->str("int");
-            else if (valuetype->type == ValueType::BOOL)
+            if (valuetype->type == ValueType::BOOL)
                 tempToken->str("bool");
             else if (valuetype->type == ValueType::CHAR)
                 tempToken->str("char");
@@ -1449,7 +1456,17 @@ CheckIO::ArgumentInfo::ArgumentInfo(const Token * tok, const Settings *settings,
                     varTok = tok1->linkAt(-1)->previous();
                     if (varTok->str() == ")" && varTok->link()->previous()->tokType() == Token::eFunction) {
                         const Function * function = varTok->link()->previous()->function();
-                        if (function && function->retDef) {
+                        if (function && function->retType && function->retType->isEnumType()) {
+                            if (function->retType->classScope->enumType)
+                                typeToken = function->retType->classScope->enumType;
+                            else {
+                                tempToken = new Token(0);
+                                tempToken->fileIndex(tok1->fileIndex());
+                                tempToken->linenr(tok1->linenr());
+                                tempToken->str("int");
+                                typeToken = tempToken;
+                            }
+                        } else if (function && function->retDef) {
                             typeToken = function->retDef;
                             while (typeToken->str() == "const" || typeToken->str() == "extern")
                                 typeToken = typeToken->next();
@@ -1460,7 +1477,17 @@ CheckIO::ArgumentInfo::ArgumentInfo(const Token * tok, const Settings *settings,
                     }
                 } else if (tok1->previous()->str() == ")" && tok1->linkAt(-1)->previous()->tokType() == Token::eFunction) {
                     const Function * function = tok1->linkAt(-1)->previous()->function();
-                    if (function && function->retDef) {
+                    if (function && function->retType && function->retType->isEnumType()) {
+                        if (function->retType->classScope->enumType)
+                            typeToken = function->retType->classScope->enumType;
+                        else {
+                            tempToken = new Token(0);
+                            tempToken->fileIndex(tok1->fileIndex());
+                            tempToken->linenr(tok1->linenr());
+                            tempToken->str("int");
+                            typeToken = tempToken;
+                        }
+                    } else if (function && function->retDef) {
                         typeToken = function->retDef;
                         while (typeToken->str() == "const" || typeToken->str() == "extern")
                             typeToken = typeToken->next();
@@ -1536,6 +1563,16 @@ CheckIO::ArgumentInfo::ArgumentInfo(const Token * tok, const Settings *settings,
             if (variableInfo) {
                 if (element && isStdVectorOrString()) { // isStdVectorOrString sets type token if true
                     element = false;    // not really an array element
+                } else if (variableInfo->isEnumType()) {
+                    if (variableInfo->type() && variableInfo->type()->classScope && variableInfo->type()->classScope->enumType)
+                        typeToken = variableInfo->type()->classScope->enumType;
+                    else {
+                        tempToken = new Token(0);
+                        tempToken->fileIndex(tok1->fileIndex());
+                        tempToken->linenr(tok1->linenr());
+                        tempToken->str("int");
+                        typeToken = tempToken;
+                    }
                 } else
                     typeToken = variableInfo->typeStartToken();
             }
@@ -1986,7 +2023,7 @@ void CheckIO::invalidLengthModifierError(const Token* tok, unsigned int numForma
     reportError(tok, Severity::warning, "invalidLengthModifierError", errmsg.str());
 }
 
-void CheckIO::invalidScanfFormatWidthError(const Token* tok, unsigned int numFormat, int width, const Variable *var)
+void CheckIO::invalidScanfFormatWidthError(const Token* tok, unsigned int numFormat, int width, const Variable *var, char c)
 {
     MathLib::bigint arrlen = 0;
     std::string varname;
@@ -2005,7 +2042,7 @@ void CheckIO::invalidScanfFormatWidthError(const Token* tok, unsigned int numFor
         reportError(tok, Severity::warning, "invalidScanfFormatWidth_smaller", errmsg.str(), CWE(0U), true);
     } else {
         errmsg << "Width " << width << " given in format string (no. " << numFormat << ") is larger than destination buffer '"
-               << varname << "[" << arrlen << "]', use %" << (arrlen - 1) << "s to prevent overflowing it.";
+               << varname << "[" << arrlen << "]', use %" << (c == 'c' ? arrlen : (arrlen - 1)) << c << " to prevent overflowing it.";
         reportError(tok, Severity::error, "invalidScanfFormatWidth", errmsg.str(), CWE687, false);
     }
 }

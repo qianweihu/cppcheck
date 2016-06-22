@@ -38,6 +38,8 @@ namespace {
     CheckMemoryLeakNoVar instance4;
 }
 
+// CWE ID used:
+static const CWE CWE398(398U);
 static const CWE CWE771(771U);
 static const CWE CWE772(772U);
 
@@ -152,11 +154,11 @@ CheckMemoryLeak::AllocType CheckMemoryLeak::getAllocationType(const Token *tok2,
         }
 
         // Does tok2 point on a Library allocation function?
-        const int alloctype = settings1->library.alloc(tok2);
+        const int alloctype = settings1->library.alloc(tok2, -1);
         if (alloctype > 0) {
-            if (alloctype == settings1->library.dealloc("free"))
+            if (alloctype == settings1->library.deallocId("free"))
                 return Malloc;
-            if (alloctype == settings1->library.dealloc("fclose"))
+            if (alloctype == settings1->library.deallocId("fclose"))
                 return File;
             return Library::ismemory(alloctype) ? OtherMem : OtherRes;
         }
@@ -225,30 +227,34 @@ CheckMemoryLeak::AllocType CheckMemoryLeak::getDeallocationType(const Token *tok
         if (Token::simpleMatch(tok, "fcloseall ( )"))
             return File;
 
-        const Token* vartok = tok->tokAt(2);
-        while (Token::Match(vartok, "%name% .|::"))
-            vartok = vartok->tokAt(2);
+        int argNr = 1;
+        for (const Token* tok2 = tok->tokAt(2); tok2; tok2 = tok2->nextArgument()) {
+            const Token* vartok = tok2;
+            while (Token::Match(vartok, "%name% .|::"))
+                vartok = vartok->tokAt(2);
 
-        if (Token::Match(vartok, "%varid% )|,|-", varid)) {
-            if (tok->str() == "realloc" && Token::simpleMatch(vartok->next(), ", 0 )"))
-                return Malloc;
-
-            if (settings1->standards.posix) {
-                if (tok->str() == "close")
-                    return Fd;
-                if (tok->str() == "pclose")
-                    return Pipe;
-            }
-
-            // Does tok point on a Library deallocation function?
-            const int dealloctype = settings1->library.dealloc(tok);
-            if (dealloctype > 0) {
-                if (dealloctype == settings1->library.dealloc("free"))
+            if (Token::Match(vartok, "%varid% )|,|-", varid)) {
+                if (tok->str() == "realloc" && Token::simpleMatch(vartok->next(), ", 0 )"))
                     return Malloc;
-                if (dealloctype == settings1->library.dealloc("fclose"))
-                    return File;
-                return Library::ismemory(dealloctype) ? OtherMem : OtherRes;
+
+                if (settings1->standards.posix) {
+                    if (tok->str() == "close")
+                        return Fd;
+                    if (tok->str() == "pclose")
+                        return Pipe;
+                }
+
+                // Does tok point on a Library deallocation function?
+                const int dealloctype = settings1->library.dealloc(tok, argNr);
+                if (dealloctype > 0) {
+                    if (dealloctype == settings1->library.deallocId("free"))
+                        return Malloc;
+                    if (dealloctype == settings1->library.deallocId("fclose"))
+                        return File;
+                    return Library::ismemory(dealloctype) ? OtherMem : OtherRes;
+                }
             }
+            argNr++;
         }
     }
 
@@ -824,6 +830,16 @@ Token *CheckMemoryLeakInFunction::getcode(const Token *tok, std::list<const Toke
                         const int offset = tok->strAt(8) == "struct" ? 1 : 0;
                         if (isclass(tok->tokAt(8 + offset), varid)) {
                             alloc = No;
+                        }
+                    }
+
+                    if (Token::simpleMatch(tok->next(), "= new")) {
+                        tok = tok->tokAt(2);
+                        while (Token::Match(tok->next(), "%name%|::|(|[")) {
+                            if (Token::Match(tok->next(), "(|["))
+                                tok = tok->linkAt(1);
+                            else
+                                tok = tok->next();
                         }
                     }
 
@@ -2161,8 +2177,8 @@ void CheckMemoryLeakInFunction::check()
     const std::size_t functions = symbolDatabase->functionScopes.size();
     for (std::size_t i = 0; i < functions; ++i) {
         const Scope * scope = symbolDatabase->functionScopes[i];
-
-        checkScope(scope->classStart->next(), "", 0, scope->functionOf != nullptr, 1);
+        if (!scope->hasInlineOrLambdaFunction())
+            checkScope(scope->classStart->next(), "", 0, scope->functionOf != nullptr, 1);
     }
 
     // Check variables..
@@ -2179,6 +2195,9 @@ void CheckMemoryLeakInFunction::check()
 
         // check for known class without implementation (forward declaration)
         if (var->isPointer() && var->type() && !var->typeScope())
+            continue;
+
+        if (var->scope()->hasInlineOrLambdaFunction())
             continue;
 
         unsigned int sz = _tokenizer->sizeOfType(var->typeStartToken());
@@ -2342,7 +2361,7 @@ void CheckMemoryLeakInClass::unsafeClassError(const Token *tok, const std::strin
 
     reportError(tok, Severity::style, "unsafeClassCanLeak",
                 "Class '" + classname + "' is unsafe, '" + varname + "' can leak by wrong usage.\n"
-                "The class '" + classname + "' is unsafe, wrong usage can cause memory/resource leaks for '" + varname + "'. This can for instance be fixed by adding proper cleanup in the destructor.");
+                "The class '" + classname + "' is unsafe, wrong usage can cause memory/resource leaks for '" + varname + "'. This can for instance be fixed by adding proper cleanup in the destructor.", CWE398, false);
 }
 
 
@@ -2380,7 +2399,7 @@ void CheckMemoryLeakInClass::checkPublicFunctions(const Scope *scope, const Toke
 
 void CheckMemoryLeakInClass::publicAllocationError(const Token *tok, const std::string &varname)
 {
-    reportError(tok, Severity::warning, "publicAllocationError", "Possible leak in public function. The pointer '" + varname + "' is not deallocated before it is allocated.");
+    reportError(tok, Severity::warning, "publicAllocationError", "Possible leak in public function. The pointer '" + varname + "' is not deallocated before it is allocated.", CWE398, false);
 }
 
 

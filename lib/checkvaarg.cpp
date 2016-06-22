@@ -124,7 +124,14 @@ void CheckVaarg::va_list_usage()
                 tok = tok->linkAt(1);
             } else if (Token::Match(tok, "throw|return"))
                 exitOnEndOfStatement = true;
-            else if (_tokenizer->isCPP() && tok->str() == "try") {
+            else if (tok->str() == "break") {
+                const Scope* scope = tok->scope();
+                while (scope->nestedIn && scope->type != Scope::eFor && scope->type != Scope::eWhile && scope->type != Scope::eDo && scope->type != Scope::eSwitch)
+                    scope = scope->nestedIn;
+                tok = scope->classEnd;
+                if (!tok)
+                    return;
+            } else if (_tokenizer->isCPP() && tok->str() == "try") {
                 open = false;
                 break;
             } else if (!open && tok->varId() == var->declarationId())

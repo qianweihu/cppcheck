@@ -21,6 +21,7 @@
 #include "mathlib.h"
 #include "errorlogger.h"
 
+#include <algorithm> // VS2013: std::min and std::max
 #include <cmath>
 #include <cctype>
 #include <cstdlib>
@@ -335,15 +336,6 @@ MathLib::biguint MathLib::toULongNumber(const std::string & str)
     return ret;
 }
 
-static bool isOctalDigitString(const std::string& str)
-{
-    for (std::string::const_iterator it=str.begin(); it!=str.end(); ++it) {
-        if (!MathLib::isOctalDigit(*it))
-            return false;
-    }
-    return true;
-}
-
 static unsigned int encodeMultiChar(const std::string& str)
 {
     unsigned int retval(str.front());
@@ -357,30 +349,52 @@ MathLib::bigint MathLib::characterLiteralToLongNumber(const std::string& str)
 {
     if (str.empty())
         return 0; // for unit-testing...
-    if (str.size()==1)
-        return str[0] & 0xff;
-    if (str[0] != '\\') {
-        // C99 6.4.4.4
-        // The value of an integer character constant containing more than one character (e.g., 'ab'),
-        // or containing a character or escape sequence that does not map to a single-byte execution character,
-        // is implementation-defined.
-        // clang and gcc seem to use the following encoding: 'AB' as (('A' << 8) | 'B')
-        return encodeMultiChar(str);
-    }
-    const std::string& str1 = str.substr(1);
 
-    switch (str1[0]) {
-    case 'x':
-        return toLongNumber("0x" + str.substr(2));
-    case 'u': // 16-bit unicode character
-        return encodeMultiChar(str1);
-    case 'U': // 32-bit unicode character
-        return encodeMultiChar(str1);
-    default: {
-        char c;
-        switch (str.size()-1) {
-        case 1:
-            switch (str[1]) {
+    // C99 6.4.4.4
+    // The value of an integer character constant containing more than one character (e.g., 'ab'),
+    // or containing a character or escape sequence that does not map to a single-byte execution character,
+    // is implementation-defined.
+    // clang and gcc seem to use the following encoding: 'AB' as (('A' << 8) | 'B')
+    const std::string& normStr = normalizeCharacterLiteral(str);
+    return encodeMultiChar(normStr);
+}
+
+std::string MathLib::normalizeCharacterLiteral(const std::string& iLiteral)
+{
+    std::string normalizedLiteral;
+    const std::string::size_type iLiteralLen = iLiteral.size();
+    for (std::string::size_type idx = 0; idx < iLiteralLen ; ++idx) {
+        if (iLiteral[idx] != '\\') {
+            normalizedLiteral.push_back(iLiteral[idx]);
+            continue;
+        }
+        ++idx;
+        if (idx == iLiteralLen) {
+            throw InternalError(0, "Internal Error. MathLib::normalizeCharacterLiteral: Unhandled char constant '" + iLiteral + "'.");
+        }
+        switch (iLiteral[idx]) {
+        case 'x':
+            // Hexa-decimal number: skip \x and interpret the next two characters
+        {
+            if (++idx == iLiteralLen)
+                throw InternalError(0, "Internal Error. MathLib::normalizeCharacterLiteral: Unhandled char constant '" + iLiteral + "'.");
+            std::string tempBuf;
+            tempBuf.push_back(iLiteral[idx]);
+            if (++idx != iLiteralLen)
+                tempBuf.push_back(iLiteral[idx]);
+            normalizedLiteral.push_back(static_cast<char>(MathLib::toULongNumber("0x" + tempBuf)));
+            continue;
+        }
+        case 'u':
+        case 'U':
+            // Unicode string; just skip the \u or \U
+            if (idx + 1 == iLiteralLen)
+                throw InternalError(0, "Internal Error. MathLib::characterLiteralToLongNumber: Unhandled char constant '" + iLiteral + "'.");
+            continue;
+        }
+        // Single digit octal number
+        if (1 == iLiteralLen - idx) {
+            switch (iLiteral[idx]) {
             case '0':
             case '1':
             case '2':
@@ -389,52 +403,59 @@ MathLib::bigint MathLib::characterLiteralToLongNumber(const std::string& str)
             case '5':
             case '6':
             case '7':
-                return str[1]-'0';
+                normalizedLiteral.push_back(iLiteral[idx]-'0');
+                break;
             case 'a':
-                c = '\a';
+                normalizedLiteral.push_back('\a');
                 break;
             case 'b':
-                c = '\b';
+                normalizedLiteral.push_back('\b');
                 break;
             case 'e':
-                c = 0x1B; // clang, gcc, tcc interpret this as 0x1B - escape character
+                normalizedLiteral.push_back(0x1B); // clang, gcc, tcc interpnormalizedLiteral this as 0x1B - escape character
                 break;
             case 'f':
-                c = '\f';
+                normalizedLiteral.push_back('\f');
                 break;
             case 'n':
-                c = '\n';
+                normalizedLiteral.push_back('\n');
                 break;
             case 'r':
-                c = '\r';
+                normalizedLiteral.push_back('\r');
                 break;
             case 't':
-                c = '\t';
+                normalizedLiteral.push_back('\t');
                 break;
             case 'v':
-                c = '\v';
+                normalizedLiteral.push_back('\v');
                 break;
             case '\\':
             case '\?':
             case '\'':
             case '\"':
-                c = str[1];
+                normalizedLiteral.push_back(iLiteral[idx]);
                 break;
             default:
-                throw InternalError(0, "Internal Error. MathLib::toLongNumber: Unhandled char constant '" + str + "'.");
+                throw InternalError(0, "Internal Error. MathLib::normalizeCharacterLiteral: Unhandled char constant '" + iLiteral + "'.");
             }
-            return c & 0xff;
-        case 2:
-        case 3:
-            if (isOctalDigitString(str1))
-                return toLongNumber("0" + str1);
-            break;
-
+            continue;
         }
+        // 2-3 digit octal number
+        if (!MathLib::isOctalDigit(iLiteral[idx]))
+            throw InternalError(0, "Internal Error. MathLib::normalizeCharacterLiteral: Unhandled char constant '" + iLiteral + "'.");
+        std::string tempBuf;
+        tempBuf.push_back(iLiteral[idx]);
+        ++idx;
+        if (MathLib::isOctalDigit(iLiteral[idx])) {
+            tempBuf.push_back(iLiteral[idx]);
+            ++idx;
+            if (MathLib::isOctalDigit(iLiteral[idx])) {
+                tempBuf.push_back(iLiteral[idx]);
+            }
+        }
+        normalizedLiteral.push_back(static_cast<char>(MathLib::toLongNumber("0" + tempBuf)));
     }
-    }
-
-    throw InternalError(0, "Internal Error. MathLib::toLongNumber: Unhandled char constant '" + str + "'.");
+    return normalizedLiteral;
 }
 
 MathLib::bigint MathLib::toLongNumber(const std::string & str)
@@ -1226,6 +1247,43 @@ bool MathLib::isNullValue(const std::string &str)
 bool MathLib::isOctalDigit(char c)
 {
     return (c >= '0' && c <= '7');
+}
+
+bool MathLib::isDigitSeparator(const std::string& iCode, std::string::size_type iPos)
+{
+    if (iPos == 0 || iPos >= iCode.size() || iCode[iPos] != '\'')
+        return false;
+    std::string::size_type i = iPos - 1;
+    while (std::isxdigit(iCode[i])) {
+        if (i == 0)
+            return true; // Only xdigits before '
+        --i;
+    }
+    if (i == iPos - 1) { // No xdigit before '
+        return false;
+    } else {
+        switch (iCode[i]) {
+        case ' ':
+        case '.':
+        case ',':
+        case 'x':
+        case '(':
+        case '{':
+        case '+':
+        case '-':
+        case '*':
+        case '%':
+        case '/':
+        case '&':
+        case '|':
+        case '^':
+        case '~':
+        case '=':
+            return true;
+        default:
+            return false;
+        }
+    }
 }
 
 MathLib::value operator+(const MathLib::value &v1, const MathLib::value &v2)
